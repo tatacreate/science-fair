@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>HelioMed: Autonomous Astronaut Health &amp; Telemetry Hub</title>
+    <meta name="description" content="Autonomous spaceflight biometric telemetry, environmental stressor fusion, 3D bio-telemetry visualization, and clinical edge decision support for deep space missions." />
+    <meta property="og:title" content="HelioMed: Autonomous Astronaut Health &amp; Telemetry Hub" />
+    <meta property="og:description" content="Autonomous spaceflight biometric telemetry, environmental stressor fusion, 3D bio-telemetry visualization, and clinical edge decision support for deep space missions." />
+    <meta property="og:type" content="website" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <script src="https://apis.google.com/js/api.js"></script>
+    <script>
+      // Pre-warm Google API iframes module to eliminate Firebase Auth dynamic script loadJS el.onerror issues
+      window.addEventListener('DOMContentLoaded', function () {
+        try {
+          if (window.gapi && window.gapi.load) {
+            window.gapi.load('gapi.iframes', function () {});
+          }
+        } catch (e) {
+          console.warn('GAPI pre-warm notice:', e);
+        }
+      });
+    </script>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>
+

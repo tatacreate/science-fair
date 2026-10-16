@@ -1,0 +1,6 @@
+{
+  "name": "HelioMed: Autonomous Astronaut Health & Telemetry Hub",
+  "description": "Autonomous spaceflight biometric telemetry, environmental stressor fusion, 3D bio-telemetry visualization, and clinical edge decision support for deep space missions.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

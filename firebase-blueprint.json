@@ -1,0 +1,56 @@
+{
+  "entities": {
+    "Mission": {
+      "title": "Mission",
+      "description": "A deep space mission identified by a unique code.",
+      "type": "object",
+      "properties": {
+        "missionCode": { "type": "string", "description": "Unique identifier for the mission." },
+        "createdAt": { "type": "string", "format": "date-time", "description": "Creation timestamp." }
+      },
+      "required": ["missionCode"]
+    },
+    "User": {
+      "title": "User",
+      "description": "An astronaut or doctor in the mission.",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "email": { "type": "string", "format": "email" },
+        "role": { "type": "string", "enum": ["astronaut", "doctor"] },
+        "missionCode": { "type": "string" }
+      },
+      "required": ["userId", "role", "missionCode"]
+    },
+    "DailyCheckin": {
+      "title": "DailyCheckin",
+      "description": "Astronaut daily health self-check.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "userId": { "type": "string" },
+        "missionCode": { "type": "string" },
+        "date": { "type": "string", "format": "date" },
+        "sleepQuality": { "type": "integer" },
+        "overallFeeling": { "type": "string" },
+        "hasPain": { "type": "boolean" },
+        "painAreas": { "type": "array", "items": { "type": "string" } }
+      },
+      "required": ["id", "userId", "missionCode", "date"]
+    }
+  },
+  "firestore": {
+    "/missions/{missionCode}": {
+      "schema": "Mission",
+      "description": "Missions collection."
+    },
+    "/users/{userId}": {
+      "schema": "User",
+      "description": "Users collection."
+    },
+    "/daily_checkins/{checkinId}": {
+      "schema": "DailyCheckin",
+      "description": "Health check-ins collection."
+    }
+  }
+}
