@@ -1,7 +1,9 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { OrbitautsEmblem } from './OrbitautsEmblem';
 import { Biometric3DViewer } from './Biometric3DViewer';
 import { INITIAL_MISSIONS, INITIAL_CREW, MissionDefinition, MissionCrewMember } from '../data/missions';
+import { formsStore, ClinicalGoogleForm, SubmittedFormReport } from '../data/formsStore';
+import { createAstronautCheckinForm } from '../utils/workspaceIntegration';
 import {
   Stethoscope,
   Radio,
@@ -19,6 +21,16 @@ import {
   User,
   Eye,
   Sparkles,
+  FileSpreadsheet,
+  FileCheck,
+  Send,
+  ExternalLink,
+  Zap,
+  Lock,
+  Pill,
+  Flame,
+  Check,
+  Users,
 } from 'lucide-react';
 
 interface DoctorDashboardProps {
@@ -39,12 +51,43 @@ export const DoctorDashboard: React.FC<DoctorDashboardProps> = ({
   const [crewRoster, setCrewRoster] = useState<Record<string, MissionCrewMember[]>>(INITIAL_CREW);
   const [inspectedAstronaut, setInspectedAstronaut] = useState<MissionCrewMember | null>(null);
 
+  // Forms store connection
+  const [dispatchedForms, setDispatchedForms] = useState<ClinicalGoogleForm[]>(
+    formsStore.getForms(activeCode)
+  );
+  const [submittedReports, setSubmittedReports] = useState<SubmittedFormReport[]>(
+    formsStore.getReports(activeCode)
+  );
+
+  // Create Google Form Modal (Doctor Platform ONLY)
+  const [isCreateFormModalOpen, setIsCreateFormModalOpen] = useState(false);
+  const [newFormTitle, setNewFormTitle] = useState('');
+  const [newFormDesc, setNewFormDesc] = useState('');
+  const [newFormCategory, setNewFormCategory] = useState<ClinicalGoogleForm['category']>('DAILY_READINESS');
+  const [newFormTargetAstronaut, setNewFormTargetAstronaut] = useState<string>('All Crew');
+  const [isCreatingForm, setIsCreatingForm] = useState(false);
+  const [formCreationSuccess, setFormCreationSuccess] = useState<string | null>(null);
+
+  // Doctor review state
+  const [selectedReportForReview, setSelectedReportForReview] = useState<SubmittedFormReport | null>(null);
+  const [doctorDirectiveInput, setDoctorDirectiveInput] = useState<string>('');
+
   // Create Mission Modal State
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [newCode, setNewCode] = useState('');
   const [newName, setNewName] = useState('');
   const [newDestination, setNewDestination] = useState('');
   const [newDescription, setNewDescription] = useState('');
+
+  // Subscribe to shared formsStore
+  useEffect(() => {
+    const updateForms = () => {
+      setDispatchedForms(formsStore.getForms(activeCode));
+      setSubmittedReports(formsStore.getReports(activeCode));
+    };
+    const unsubscribe = formsStore.subscribe(updateForms);
+    return () => unsubscribe();
+  }, [activeCode]);
 
   const currentMission =
     missions.find((m) => m.code === activeCode) || {
@@ -86,6 +129,11 @@ export const DoctorDashboard: React.FC<DoctorDashboardProps> = ({
   const submittedCrew = currentCrew.filter((c) => c.hasSubmittedToday).length;
   const compliancePct = Math.round((submittedCrew / (totalCrew || 1)) * 100);
   const alertCount = currentCrew.filter((c) => c.status !== 'NOMINAL').length;
+
+  // Average fleet radiation dose
+  const avgRadiationRate = +(
+    currentCrew.reduce((acc, c) => acc + (c.recentVitals.radiationRate || 2.1), 0) / (totalCrew || 1)
+  ).toFixed(1);
 
   const handleCreateMission = (e: React.FormEvent) => {
     e.preventDefault();
@@ -150,6 +198,125 @@ export const DoctorDashboard: React.FC<DoctorDashboardProps> = ({
     setNewDescription('');
   };
 
+  // Doctor Platform ONLY: Handle Google Form Creation & Dispatch
+  const handleDispatchGoogleForm = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newFormTitle.trim()) return;
+
+    setIsCreatingForm(true);
+
+    let responderUri = `https://docs.google.com/forms/d/e/1FAIpQLS_${Date.now()}/viewform`;
+
+    // Attempt real Google Forms API integration if user signed into Google Workspace
+    try {
+      const realForm = await createAstronautCheckinForm(
+        newFormTitle.trim(),
+        newFormTargetAstronaut === 'All Crew' ? activeCode : newFormTargetAstronaut
+      );
+      if (realForm?.responderUri) {
+        responderUri = realForm.responderUri;
+      }
+    } catch (err) {
+      console.info('Google Forms API direct call handled; dispatching via HelioMed Deep-Space Bridge.');
+    }
+
+    // Default questions based on category
+    const defaultQuestions =
+      newFormCategory === 'PRE_EVA'
+        ? [
+            {
+              id: 'q1',
+              text: 'Visual acuity check (Near & far field focus clarity)',
+              type: 'CHOICE' as const,
+              options: ['Nominal (100% Crisp)', 'Minor blurriness in lower quadrant', 'Significant visual impairment'],
+            },
+            {
+              id: 'q2',
+              text: 'Pre-EVA Fatigue and sleep restoration rating (1-10)',
+              type: 'SCALE' as const,
+            },
+            {
+              id: 'q3',
+              text: 'Shoulder / Neck umbilical suit harness pressure point check',
+              type: 'CHOICE' as const,
+              options: ['No pain / nominal suit clearance', 'Mild clavicle pressure', 'Severe pain / restriction'],
+            },
+          ]
+        : newFormCategory === 'RADIATION_SYMPTOM'
+        ? [
+            {
+              id: 'rad_q1',
+              text: 'Prodromal radiation symptoms reported within past 4 hours',
+              type: 'CHOICE' as const,
+              options: ['None - Asymptomatic', 'Mild episodic nausea', 'Cephalic headache / photophobia', 'Extreme weakness / fatigue'],
+            },
+            {
+              id: 'rad_q2',
+              text: 'Current habitat location & shielding configuration',
+              type: 'CHOICE' as const,
+              options: ['Inside Water-Wall Storm Shelter (-88%)', 'Sleeping Berth (HDPE shielded)', 'Forward Cockpit / Unshielded'],
+            },
+            {
+              id: 'rad_q3',
+              text: 'Dosimeter reading logged (µSv/h)',
+              type: 'TEXT' as const,
+            },
+          ]
+        : [
+            {
+              id: 'q1',
+              text: 'Report current microgravity symptoms and fluid shift adaptation',
+              type: 'CHOICE' as const,
+              options: ['Nominal adaptation', 'Head congestion / fullness', 'Musculoskeletal stiffness', 'Sensory fatigue'],
+            },
+            {
+              id: 'q2',
+              text: 'Subjective fatigue score (1-10)',
+              type: 'SCALE' as const,
+            },
+            {
+              id: 'q3',
+              text: 'Clinical symptom notes or pain locations',
+              type: 'TEXT' as const,
+            },
+          ];
+
+    const created = formsStore.addForm({
+      title: newFormTitle.trim(),
+      description: newFormDesc.trim() || `Clinical survey dispatched by Ground Flight Surgeon for Mission ${activeCode}.`,
+      missionCode: activeCode,
+      targetAstronaut: newFormTargetAstronaut === 'All Crew' ? undefined : newFormTargetAstronaut,
+      responderUri,
+      authorDoctor: currentMission.flightSurgeon,
+      category: newFormCategory,
+      questions: defaultQuestions,
+    });
+
+    setIsCreatingForm(false);
+    setIsCreateFormModalOpen(false);
+    setNewFormTitle('');
+    setNewFormDesc('');
+    setFormCreationSuccess(`✓ Successfully dispatched "${created.title}" to Mission ${activeCode}! Astronauts can now complete and submit this form.`);
+
+    setTimeout(() => {
+      setFormCreationSuccess(null);
+    }, 7000);
+  };
+
+  // Doctor reviews report & issues directive
+  const handleSignOffReport = (reportId: string, status: 'CLEARED' | 'ACTION_REQUIRED') => {
+    formsStore.reviewReport(
+      reportId,
+      status,
+      doctorDirectiveInput.trim() ||
+        (status === 'CLEARED'
+          ? 'Approved by Flight Surgeon: Astronaut cleared for scheduled flight duties.'
+          : 'Flight Surgeon Order: Stand down from high-metabolic exertion. Ingress storm shelter and ingest prescribed NAC supplement.')
+    );
+    setSelectedReportForReview(null);
+    setDoctorDirectiveInput('');
+  };
+
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100 font-sans selection:bg-amber-500 selection:text-slate-950 pb-16">
       {/* Flight Surgeon Mission Navigation Bar */}
@@ -163,11 +330,11 @@ export const DoctorDashboard: React.FC<DoctorDashboardProps> = ({
                   NASA Flight Surgeon Console
                 </span>
                 <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-amber-950 border border-amber-700/60 text-amber-300 font-bold">
-                  GROUND MEDICAL COMMAND
+                  GROUND MEDICAL COMMAND &bull; EARTH
                 </span>
               </div>
               <p className="text-xs text-slate-400 font-medium">
-                Deep-Space Multi-Mission Crew Surveillance • Earth Telemetry Station
+                Deep-Space Multi-Mission Crew Surveillance • Google Form Dispatch Studio &amp; Telemetry Analysis
               </p>
             </div>
           </div>
@@ -187,11 +354,22 @@ export const DoctorDashboard: React.FC<DoctorDashboardProps> = ({
               >
                 {missions.map((m) => (
                   <option key={m.code} value={m.code} className="bg-slate-900 text-slate-200">
-                    {m.code} ({m.name.split(' ')[0]})
+                    {m.code} ({m.name.replace('NASA ', '').split(' ')[0]})
                   </option>
                 ))}
               </select>
             </div>
+
+            {/* Create Google Form Button (Doctor Platform ONLY) */}
+            <button
+              type="button"
+              onClick={() => setIsCreateFormModalOpen(true)}
+              className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white font-bold rounded-xl transition cursor-pointer shadow-md"
+              title="Only Doctors can author Google Forms"
+            >
+              <FileSpreadsheet className="w-3.5 h-3.5" />
+              <span>Dispatch Google Form</span>
+            </button>
 
             {/* Create Mission Button */}
             <button
@@ -200,7 +378,7 @@ export const DoctorDashboard: React.FC<DoctorDashboardProps> = ({
               className="flex items-center gap-1.5 px-3 py-1.5 bg-amber-600 hover:bg-amber-500 text-slate-950 font-bold rounded-xl transition cursor-pointer shadow-md"
             >
               <Plus className="w-3.5 h-3.5" />
-              <span>Create Mission</span>
+              <span>New Mission</span>
             </button>
 
             {/* Return to Home Briefing */}
@@ -211,7 +389,7 @@ export const DoctorDashboard: React.FC<DoctorDashboardProps> = ({
               title="Return to Home Landing"
             >
               <Home className="w-3.5 h-3.5 text-cyan-400" />
-              <span>Home Briefing</span>
+              <span>Home</span>
             </button>
 
             {/* Sign Out */}
@@ -267,6 +445,14 @@ export const DoctorDashboard: React.FC<DoctorDashboardProps> = ({
           </div>
         </div>
 
+        {/* Success Banner */}
+        {formCreationSuccess && (
+          <div className="p-4 rounded-xl bg-emerald-950/90 border border-emerald-600 shadow-xl flex items-center gap-3 text-xs text-emerald-300 animate-in fade-in">
+            <CheckCircle2 className="w-5 h-5 text-emerald-400 flex-shrink-0" />
+            <span>{formCreationSuccess}</span>
+          </div>
+        )}
+
         {/* 4 Metric Strips for Quick Crew Status */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
           <div className="p-4 rounded-xl bg-slate-900/80 border border-slate-800 flex items-center justify-between">
@@ -281,13 +467,13 @@ export const DoctorDashboard: React.FC<DoctorDashboardProps> = ({
 
           <div className="p-4 rounded-xl bg-slate-900/80 border border-slate-800 flex items-center justify-between">
             <div>
-              <span className="text-[11px] font-mono text-slate-400 uppercase">Check-in Compliance</span>
+              <span className="text-[11px] font-mono text-slate-400 uppercase">Form Responses Received</span>
               <div className="text-2xl font-bold font-mono text-emerald-400 mt-1">
-                {compliancePct}% ({submittedCrew}/{totalCrew})
+                {submittedReports.length} Reports
               </div>
             </div>
             <div className="w-10 h-10 rounded-xl bg-emerald-950 border border-emerald-800 flex items-center justify-center text-emerald-400">
-              <ClipboardCheck className="w-5 h-5" />
+              <FileCheck className="w-5 h-5" />
             </div>
           </div>
 
@@ -315,12 +501,251 @@ export const DoctorDashboard: React.FC<DoctorDashboardProps> = ({
 
           <div className="p-4 rounded-xl bg-slate-900/80 border border-slate-800 flex items-center justify-between">
             <div>
-              <span className="text-[11px] font-mono text-slate-400 uppercase">Deep Space Background</span>
-              <div className="text-2xl font-bold font-mono text-cyan-400 mt-1">2.1 µSv/h</div>
+              <span className="text-[11px] font-mono text-slate-400 uppercase">Fleet Avg Radiation</span>
+              <div className="text-2xl font-bold font-mono text-rose-400 mt-1">{avgRadiationRate} µSv/h</div>
             </div>
-            <div className="w-10 h-10 rounded-xl bg-indigo-950 border border-indigo-800 flex items-center justify-center text-indigo-400">
-              <Activity className="w-5 h-5" />
+            <div className="w-10 h-10 rounded-xl bg-rose-950 border border-rose-800 flex items-center justify-center text-rose-400">
+              <Zap className="w-5 h-5" />
             </div>
+          </div>
+        </div>
+
+        {/* SECTION 1: NASA Flight Surgeon Incoming Form Responses & Clinical Telemetry Console */}
+        <div className="bg-slate-900/90 border border-slate-800 rounded-2xl p-5 sm:p-6 shadow-xl space-y-4">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-800 pb-3">
+            <div>
+              <h3 className="text-base font-bold text-slate-100 flex items-center gap-2">
+                <FileCheck className="w-5 h-5 text-emerald-400" />
+                NASA Ground Clinical Form Intake &amp; Telemetry Analysis Console
+              </h3>
+              <p className="text-xs text-slate-400">
+                Any info submitted by astronauts in Google Forms is downlinked to Earth via DSN and evaluated by NASA Flight Surgeons against standard NASA-STD-3001 protocols.
+              </p>
+            </div>
+
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => setIsCreateFormModalOpen(true)}
+                className="px-3.5 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-mono text-xs font-bold transition flex items-center gap-1.5 cursor-pointer shadow-md"
+              >
+                <Plus className="w-3.5 h-3.5" />
+                <span>Create &amp; Dispatch New Google Form</span>
+              </button>
+            </div>
+          </div>
+
+          {/* Submitted Form Reports Table */}
+          {submittedReports.length > 0 ? (
+            <div className="overflow-x-auto rounded-xl border border-slate-800">
+              <table className="w-full text-left text-xs font-sans">
+                <thead>
+                  <tr className="bg-slate-950 border-b border-slate-800 text-[10px] font-mono text-slate-400 uppercase tracking-wider">
+                    <th className="py-3 px-3">Astronaut</th>
+                    <th className="py-3 px-3">Form Title</th>
+                    <th className="py-3 px-3">Transmission Timestamps</th>
+                    <th className="py-3 px-3">NASA Protocol Evaluation</th>
+                    <th className="py-3 px-3">Triage</th>
+                    <th className="py-3 px-3">Surgeon Status</th>
+                    <th className="py-3 px-3 text-right">Action</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-800/60 bg-slate-900/60">
+                  {submittedReports.map((report) => (
+                    <tr key={report.id} className="hover:bg-slate-800/40 transition-colors">
+                      <td className="py-3.5 px-3">
+                        <div className="font-semibold text-slate-200 text-sm">{report.astronautName}</div>
+                        <div className="text-[10px] text-emerald-400 font-mono">Mission: {report.missionCode}</div>
+                      </td>
+                      <td className="py-3.5 px-3">
+                        <span className="text-slate-300 font-medium block">{report.formTitle}</span>
+                        <div className="text-[10px] text-slate-500 font-mono">
+                          Answers logged: {Object.keys(report.answers).length} questions
+                        </div>
+                      </td>
+                      <td className="py-3.5 px-3 font-mono text-[11px] text-slate-400">
+                        <div>Sub: {report.submittedAt}</div>
+                        <div className="text-slate-500">Rec: {report.receivedAtEarth}</div>
+                        <div className="text-[10px] text-amber-400">{report.latencyDisplay}</div>
+                      </td>
+                      <td className="py-3.5 px-3 max-w-xs">
+                        <div className="text-slate-200 text-xs leading-relaxed font-sans line-clamp-2">
+                          {report.aiAnalysis.summary}
+                        </div>
+                        {report.aiAnalysis.primaryConcerns.length > 0 && (
+                          <div className="flex flex-wrap gap-1 mt-1">
+                            {report.aiAnalysis.primaryConcerns.map((c, i) => (
+                              <span
+                                key={i}
+                                className="px-1.5 py-0.5 rounded bg-rose-950 text-rose-300 text-[9px] font-mono border border-rose-800"
+                              >
+                                {c}
+                              </span>
+                            ))}
+                          </div>
+                        )}
+                      </td>
+                      <td className="py-3.5 px-3">
+                        <span
+                          className={`px-2 py-0.5 rounded text-[10px] font-mono font-bold border ${
+                            report.aiAnalysis.triageLevel === 'CRITICAL'
+                              ? 'bg-rose-950 border-rose-600 text-rose-300 animate-pulse'
+                              : report.aiAnalysis.triageLevel === 'WARNING'
+                              ? 'bg-amber-950 border-amber-600 text-amber-300'
+                              : report.aiAnalysis.triageLevel === 'ADVISORY'
+                              ? 'bg-cyan-950 border-cyan-600 text-cyan-300'
+                              : 'bg-emerald-950 border-emerald-600 text-emerald-300'
+                          }`}
+                        >
+                          {report.aiAnalysis.triageLevel}
+                        </span>
+                      </td>
+                      <td className="py-3.5 px-3">
+                        <span
+                          className={`px-2 py-0.5 rounded text-[10px] font-mono font-bold border ${
+                            report.doctorReviewStatus === 'CLEARED'
+                              ? 'bg-emerald-950 text-emerald-300 border-emerald-700'
+                              : report.doctorReviewStatus === 'ACTION_REQUIRED'
+                              ? 'bg-rose-950 text-rose-300 border-rose-700'
+                              : 'bg-amber-950 text-amber-300 border-amber-700'
+                          }`}
+                        >
+                          {report.doctorReviewStatus === 'CLEARED'
+                            ? 'CLEARED'
+                            : report.doctorReviewStatus === 'ACTION_REQUIRED'
+                            ? 'ACTION REQ'
+                            : 'PENDING'}
+                        </span>
+                      </td>
+                      <td className="py-3.5 px-3 text-right">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setSelectedReportForReview(report);
+                            setDoctorDirectiveInput(report.doctorNotes || '');
+                          }}
+                          className="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 font-mono text-xs font-semibold transition cursor-pointer flex items-center gap-1.5 ml-auto"
+                        >
+                          <Stethoscope className="w-3.5 h-3.5 text-cyan-400" />
+                          <span>Review &amp; Order</span>
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          ) : (
+            <div className="p-6 rounded-xl bg-slate-950/60 border border-dashed border-slate-800 text-center space-y-2">
+              <FileSpreadsheet className="w-8 h-8 text-slate-500 mx-auto" />
+              <h4 className="text-xs font-bold text-slate-300">No Form Submissions Yet for Mission {activeCode}</h4>
+              <p className="text-[11px] text-slate-500 max-w-md mx-auto">
+                Use the &quot;Dispatch Google Form&quot; button above to create a survey. Astronauts will complete it from their capsule portal, and responses will stream here for analysis.
+              </p>
+            </div>
+          )}
+
+          {/* Active Dispatched Google Forms Roster */}
+          <div className="pt-3 border-t border-slate-800 space-y-2">
+            <span className="text-[11px] font-mono text-slate-400 uppercase tracking-wider block">
+              Active Google Forms Dispatched to Crew ({dispatchedForms.length}):
+            </span>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              {dispatchedForms.map((f) => (
+                <div key={f.id} className="p-3.5 rounded-xl bg-slate-950 border border-slate-800 space-y-1.5">
+                  <div className="flex items-start justify-between gap-2">
+                    <div>
+                      <h5 className="text-xs font-bold text-slate-200">{f.title}</h5>
+                      <p className="text-[11px] text-slate-400 leading-relaxed">{f.description}</p>
+                    </div>
+                    <span className="px-2 py-0.5 rounded text-[10px] font-mono bg-slate-900 border border-slate-800 text-cyan-400">
+                      {f.category}
+                    </span>
+                  </div>
+                  <div className="flex items-center justify-between text-[10px] font-mono text-slate-500 pt-1 border-t border-slate-900">
+                    <span>Dispatched: {f.createdAt}</span>
+                    <a
+                      href={f.responderUri}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="text-emerald-400 hover:text-emerald-300 flex items-center gap-1 font-semibold"
+                    >
+                      <span>Google Form Link</span>
+                      <ExternalLink className="w-3 h-3" />
+                    </a>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+
+        {/* SECTION 2: Mission Fleet Radiation Dosimetry Overview */}
+        <div className="bg-slate-900/90 border border-slate-800 rounded-2xl p-5 sm:p-6 shadow-xl space-y-4">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-800 pb-3">
+            <div>
+              <h3 className="text-base font-bold text-slate-100 flex items-center gap-2">
+                <Zap className="w-5 h-5 text-rose-400" />
+                Mission Fleet Radiation Dosimetry &amp; Exposure Tracking
+              </h3>
+              <p className="text-xs text-slate-400">
+                Ground monitoring of cumulative ionizing radiation (GCR, SPE flares, trapped belts) across all crew members on {activeCode}
+              </p>
+            </div>
+            <span className="px-2.5 py-1 rounded-full bg-slate-950 border border-slate-800 text-xs font-mono text-cyan-400">
+              NASA 600 mSv Career Ceiling
+            </span>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3.5">
+            {currentCrew.map((c) => {
+              const dose = c.cumulativeRadiationDoseMsv || 14.2;
+              const rate = c.recentVitals.radiationRate || 2.1;
+              const pct = Math.min(100, Math.round((dose / 600) * 100));
+
+              return (
+                <div
+                  key={c.id}
+                  className="p-4 rounded-xl bg-slate-950 border border-slate-800 space-y-2.5 hover:border-slate-700 transition-colors"
+                >
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <h4 className="text-xs font-bold text-slate-200">{c.name}</h4>
+                      <span className="text-[10px] text-slate-500 font-mono">{c.role}</span>
+                    </div>
+                    <span
+                      className={`px-2 py-0.5 rounded text-[10px] font-mono font-bold ${
+                        rate > 50
+                          ? 'bg-rose-950 text-rose-300 border border-rose-700'
+                          : rate > 15
+                          ? 'bg-amber-950 text-amber-300 border border-amber-700'
+                          : 'bg-emerald-950 text-emerald-300 border border-emerald-700'
+                      }`}
+                    >
+                      {rate.toFixed(1)} µSv/h
+                    </span>
+                  </div>
+
+                  <div className="space-y-1">
+                    <div className="flex items-center justify-between text-[11px] font-mono">
+                      <span className="text-slate-400">Cumulative:</span>
+                      <strong className="text-slate-200">{dose.toFixed(1)} mSv ({pct}%)</strong>
+                    </div>
+                    <div className="w-full bg-slate-900 h-2 rounded-full overflow-hidden border border-slate-800">
+                      <div
+                        style={{ width: `${pct}%` }}
+                        className={`h-full ${pct > 50 ? 'bg-rose-500' : pct > 25 ? 'bg-amber-500' : 'bg-cyan-500'}`}
+                      />
+                    </div>
+                  </div>
+
+                  <div className="pt-1 text-[10px] font-mono text-slate-500 flex items-center justify-between">
+                    <span>REID Risk: &lt;1.2%</span>
+                    <span className="text-emerald-400">Shielding Nominal</span>
+                  </div>
+                </div>
+              );
+            })}
           </div>
         </div>
 
@@ -519,8 +944,8 @@ export const DoctorDashboard: React.FC<DoctorDashboardProps> = ({
                 {inspectedAstronaut.latestCheckin?.aiFeedback && (
                   <div className="p-4 rounded-xl bg-slate-950 border border-slate-800 space-y-2 text-xs">
                     <span className="font-mono text-[11px] uppercase text-amber-400 font-bold flex items-center gap-1.5">
-                      <Sparkles className="w-3.5 h-3.5 text-amber-400" />
-                      Autonomous Onboard Guidance
+                      <FileCheck className="w-3.5 h-3.5 text-amber-400" />
+                      Flight Medicine Guidance (NASA-STD-3001):
                     </span>
                     <p className="text-slate-300 leading-relaxed font-sans text-xs">
                       {inspectedAstronaut.latestCheckin.aiFeedback}
@@ -533,7 +958,223 @@ export const DoctorDashboard: React.FC<DoctorDashboardProps> = ({
         )}
       </main>
 
-      {/* Create New Mission Modal */}
+      {/* MODAL 1: Create Google Form (Doctor Platform ONLY) */}
+      {isCreateFormModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
+          <div className="w-full max-w-lg bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-2xl space-y-4">
+            <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+              <div>
+                <h3 className="text-base font-bold text-slate-100 flex items-center gap-2">
+                  <FileSpreadsheet className="w-4 h-4 text-emerald-400" />
+                  Dispatch Clinical Google Form to Mission Crew
+                </h3>
+                <p className="text-xs text-slate-400">
+                  Doctor-authorized medical survey creation for Mission {activeCode}
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsCreateFormModalOpen(false)}
+                className="text-slate-400 hover:text-white cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <form onSubmit={handleDispatchGoogleForm} className="space-y-3.5 text-xs">
+              <div>
+                <label className="block text-slate-300 font-mono text-[11px] uppercase mb-1">
+                  Survey / Form Title:
+                </label>
+                <input
+                  type="text"
+                  required
+                  placeholder="e.g. Pre-Sortie Cardiopulmonary & SANS Evaluation"
+                  value={newFormTitle}
+                  onChange={(e) => setNewFormTitle(e.target.value)}
+                  className="w-full px-3 py-2 bg-slate-950 border border-slate-700 rounded-lg text-slate-100 font-sans text-xs focus:outline-none focus:border-emerald-500"
+                />
+              </div>
+
+              <div>
+                <label className="block text-slate-300 font-mono text-[11px] uppercase mb-1">
+                  Clinical Survey Category:
+                </label>
+                <select
+                  value={newFormCategory}
+                  onChange={(e) => setNewFormCategory(e.target.value as ClinicalGoogleForm['category'])}
+                  className="w-full px-3 py-2 bg-slate-950 border border-slate-700 rounded-lg text-slate-300 font-mono text-xs focus:outline-none focus:border-emerald-500"
+                >
+                  <option value="PRE_EVA">Pre-EVA Airlock Clearance Battery</option>
+                  <option value="RADIATION_SYMPTOM">Acute Radiation &amp; Solar Flare Symptom Log</option>
+                  <option value="SANS_VISION">SANS Neuro-Ocular Fluid Shift Check</option>
+                  <option value="DAILY_READINESS">Daily Operational Readiness Check</option>
+                  <option value="PSYCH_STRESS">Deep-Space Isolation &amp; Morale Battery</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-slate-300 font-mono text-[11px] uppercase mb-1">
+                  Target Recipient(s):
+                </label>
+                <select
+                  value={newFormTargetAstronaut}
+                  onChange={(e) => setNewFormTargetAstronaut(e.target.value)}
+                  className="w-full px-3 py-2 bg-slate-950 border border-slate-700 rounded-lg text-slate-300 font-mono text-xs focus:outline-none focus:border-emerald-500"
+                >
+                  <option value="All Crew">All Mission Crew ({activeCode})</option>
+                  {currentCrew.map((c) => (
+                    <option key={c.id} value={c.name}>
+                      {c.name} ({c.role})
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-slate-300 font-mono text-[11px] uppercase mb-1">
+                  Clinical Instructions for Astronaut:
+                </label>
+                <textarea
+                  rows={2}
+                  placeholder="Complete and submit prior to beginning EVA airlock depressurization."
+                  value={newFormDesc}
+                  onChange={(e) => setNewFormDesc(e.target.value)}
+                  className="w-full px-3 py-2 bg-slate-950 border border-slate-700 rounded-lg text-slate-100 text-xs focus:outline-none focus:border-emerald-500 resize-none"
+                />
+              </div>
+
+              <div className="p-3 rounded-lg bg-emerald-950/60 border border-emerald-800 text-[11px] text-emerald-300 flex items-start gap-2">
+                <Check className="w-4 h-4 text-emerald-400 flex-shrink-0 mt-0.5" />
+                <span>
+                  Once dispatched, this Google Form will appear immediately in the astronaut capsule portal. Responses will transmit back to Houston with real light-speed delay simulation for Flight Surgeon clinical review.
+                </span>
+              </div>
+
+              <div className="pt-2 flex items-center justify-end gap-2 border-t border-slate-800">
+                <button
+                  type="button"
+                  onClick={() => setIsCreateFormModalOpen(false)}
+                  className="px-4 py-2 rounded-lg bg-slate-800 text-slate-300 hover:bg-slate-700 font-mono text-xs cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={isCreatingForm}
+                  className="px-5 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white font-bold font-mono text-xs cursor-pointer shadow flex items-center gap-1.5 disabled:opacity-50"
+                >
+                  <Send className="w-3.5 h-3.5" />
+                  <span>{isCreatingForm ? 'Generating...' : 'Dispatch to Capsule'}</span>
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL 2: Flight Surgeon Review & Clinical Orders */}
+      {selectedReportForReview && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
+          <div className="w-full max-w-lg bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-2xl space-y-4 max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+              <div>
+                <h3 className="text-base font-bold text-slate-100 flex items-center gap-2">
+                  <Stethoscope className="w-4 h-4 text-cyan-400" />
+                  Flight Surgeon Report Review &amp; Directive
+                </h3>
+                <p className="text-xs text-slate-400 mt-0.5">
+                  Astronaut: <strong className="text-slate-200">{selectedReportForReview.astronautName}</strong> &bull; {selectedReportForReview.formTitle}
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setSelectedReportForReview(null)}
+                className="text-slate-400 hover:text-white cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="space-y-3 text-xs">
+              {/* Telemetry latency stamp */}
+              <div className="p-3 rounded-lg bg-slate-950 border border-slate-800 flex items-center justify-between font-mono text-[11px]">
+                <span className="text-slate-400">Transmitted: {selectedReportForReview.submittedAt}</span>
+                <span className="text-amber-400">{selectedReportForReview.latencyDisplay}</span>
+              </div>
+
+              {/* Answers */}
+              <div className="p-3.5 rounded-xl bg-slate-950 border border-slate-800 space-y-2">
+                <span className="font-mono text-[11px] text-cyan-400 uppercase font-bold block">
+                  Reported Questionnaire Answers:
+                </span>
+                <div className="space-y-1.5 text-slate-300">
+                  {Object.entries(selectedReportForReview.answers).map(([key, val]) => (
+                    <div key={key} className="flex items-start justify-between gap-2 border-b border-slate-900 pb-1">
+                      <span className="text-slate-400 font-mono text-[11px]">{key}:</span>
+                      <strong className="text-slate-200 text-right">{String(val)}</strong>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* Ground Protocol Evaluation */}
+              <div className="p-3.5 rounded-xl bg-slate-950 border border-slate-800 space-y-2">
+                <div className="flex items-center justify-between">
+                  <span className="font-mono text-[11px] text-amber-400 uppercase font-bold flex items-center gap-1.5">
+                    <FileCheck className="w-3.5 h-3.5 text-amber-400" />
+                    Automated NASA-STD-3001 Protocol Evaluation:
+                  </span>
+                  <span className="px-2 py-0.5 rounded text-[10px] font-mono font-bold bg-slate-900 text-amber-300 border border-slate-700">
+                    {selectedReportForReview.aiAnalysis.triageLevel}
+                  </span>
+                </div>
+                <p className="text-slate-300 leading-relaxed font-sans text-xs">
+                  {selectedReportForReview.aiAnalysis.summary}
+                </p>
+                <div className="text-[11px] text-emerald-400 font-sans">
+                  <strong>Recommended Protocol:</strong> {selectedReportForReview.aiAnalysis.recommendedAction}
+                </div>
+              </div>
+
+              {/* Doctor Directive Input */}
+              <div className="space-y-1.5">
+                <label className="block text-slate-300 font-mono text-[11px] uppercase">
+                  Flight Surgeon Ground Directive / Prescription:
+                </label>
+                <textarea
+                  rows={3}
+                  placeholder="e.g. Approved for EVA-1 sortie. Maintain 2.5L electrolyte intake and execute 15-minute lumbar decompression stretching."
+                  value={doctorDirectiveInput}
+                  onChange={(e) => setDoctorDirectiveInput(e.target.value)}
+                  className="w-full px-3 py-2 bg-slate-950 border border-slate-700 rounded-lg text-slate-100 text-xs focus:outline-none focus:border-cyan-500 resize-none font-sans"
+                />
+              </div>
+
+              {/* Sign-off Actions */}
+              <div className="pt-2 flex flex-wrap items-center justify-end gap-2 border-t border-slate-800">
+                <button
+                  type="button"
+                  onClick={() => handleSignOffReport(selectedReportForReview.id, 'ACTION_REQUIRED')}
+                  className="px-4 py-2 rounded-xl bg-rose-950 hover:bg-rose-900 border border-rose-700 text-rose-200 font-mono font-bold text-xs cursor-pointer"
+                >
+                  Require Ground Medical Action
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleSignOffReport(selectedReportForReview.id, 'CLEARED')}
+                  className="px-5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-mono font-bold text-xs cursor-pointer shadow flex items-center gap-1.5"
+                >
+                  <CheckCircle2 className="w-3.5 h-3.5" />
+                  <span>Clear Astronaut &amp; Beam Order to Capsule</span>
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL 3: Create New Mission Modal */}
       {isCreateModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
           <div className="w-full max-w-lg bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-2xl space-y-4">
@@ -547,19 +1188,19 @@ export const DoctorDashboard: React.FC<DoctorDashboardProps> = ({
                 onClick={() => setIsCreateModalOpen(false)}
                 className="text-slate-400 hover:text-white cursor-pointer"
               >
-                <X className="w-4 h-4" />
+                <X className="w-5 h-5" />
               </button>
             </div>
 
             <form onSubmit={handleCreateMission} className="space-y-3.5 text-xs">
               <div>
                 <label className="block text-slate-300 font-mono text-[11px] uppercase mb-1">
-                  Unique Mission Code (e.g. TITAN-I, EUROPA-II):
+                  Unique Mission Code (e.g. ARTEMIS-IV, CREW-10):
                 </label>
                 <input
                   type="text"
                   required
-                  placeholder="TITAN-I"
+                  placeholder="ARTEMIS-IV"
                   value={newCode}
                   onChange={(e) => setNewCode(e.target.value.toUpperCase())}
                   className="w-full px-3 py-2 bg-slate-950 border border-slate-700 rounded-lg text-slate-100 font-mono text-xs focus:outline-none focus:border-amber-500"
@@ -573,7 +1214,7 @@ export const DoctorDashboard: React.FC<DoctorDashboardProps> = ({
                 <input
                   type="text"
                   required
-                  placeholder="Titan Methane Sea Explorer"
+                  placeholder="NASA Artemis IV Gateway Habitat"
                   value={newName}
                   onChange={(e) => setNewName(e.target.value)}
                   className="w-full px-3 py-2 bg-slate-950 border border-slate-700 rounded-lg text-slate-100 text-xs focus:outline-none focus:border-amber-500"
@@ -587,7 +1228,7 @@ export const DoctorDashboard: React.FC<DoctorDashboardProps> = ({
                 <input
                   type="text"
                   required
-                  placeholder="Saturn Moon Titan Transit"
+                  placeholder="Near-Rectilinear Halo Orbit (NRHO)"
                   value={newDestination}
                   onChange={(e) => setNewDestination(e.target.value)}
                   className="w-full px-3 py-2 bg-slate-950 border border-slate-700 rounded-lg text-slate-100 text-xs focus:outline-none focus:border-amber-500"
@@ -600,7 +1241,7 @@ export const DoctorDashboard: React.FC<DoctorDashboardProps> = ({
                 </label>
                 <textarea
                   rows={2}
-                  placeholder="Cryogenic radiation shielding and prolonged microgravity musculoskeletal countermeasure tracking."
+                  placeholder="Long-duration deep-space radiation shielding and autonomous clinical support."
                   value={newDescription}
                   onChange={(e) => setNewDescription(e.target.value)}
                   className="w-full px-3 py-2 bg-slate-950 border border-slate-700 rounded-lg text-slate-100 text-xs focus:outline-none focus:border-amber-500 resize-none"

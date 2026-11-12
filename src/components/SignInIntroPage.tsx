@@ -110,7 +110,7 @@ export const SignInIntroPage: React.FC<SignInIntroPageProps> = ({
             </h1>
 
             <p className="text-base sm:text-lg text-slate-300 max-w-3xl mx-auto leading-relaxed">
-              When traveling to Mars or deep space, human doctors cannot come with you. HelioMed bridges the light-speed delay by providing astronauts with instant AI-driven clinical triage, 3D anatomical pain mapping, and giving Earth-based Flight Surgeons a synchronized mission command console.
+              When traveling to Mars or deep space, human doctors cannot come with you. HelioMed operates 100% offline with zero internet in deep space, providing astronauts with instant clinical triage, 3D anatomical pain mapping, and giving Earth-based Flight Surgeons a synchronized mission command console.
             </p>
 
             <div className="pt-2 flex flex-wrap items-center justify-center gap-4">
@@ -170,7 +170,7 @@ export const SignInIntroPage: React.FC<SignInIntroPageProps> = ({
                   </div>
                   <div className="p-2 rounded-lg bg-slate-950 border border-slate-800 text-center">
                     <span className="text-emerald-400 font-bold block">Zero Latency</span>
-                    <span className="text-[10px] text-slate-500">Edge AI Decision</span>
+                    <span className="text-[10px] text-slate-500">Offline Protocol</span>
                   </div>
                 </div>
               </div>
@@ -192,7 +192,7 @@ export const SignInIntroPage: React.FC<SignInIntroPageProps> = ({
                   For Astronauts On Board
                 </h3>
                 <p className="text-xs text-slate-300 leading-relaxed">
-                  Start each day with the autonomous 6-point medical self-check. Rate microgravity sleep, report physical feelings, pinpoint pain areas on your rotating 3D avatar, and receive instantaneous AI flight surgeon mitigation routines.
+                  Start each day with the autonomous 6-point medical self-check. Rate microgravity sleep, report physical feelings, pinpoint pain areas on your rotating 3D avatar, and execute standardized NASA flight medicine mitigation protocols.
                 </p>
                 <div className="pt-1 flex items-center gap-2 text-cyan-400 font-mono text-xs font-semibold">
                   <span>Daily Forms • 3D Pain Mapping • Habit Tracking</span>
@@ -240,7 +240,7 @@ export const SignInIntroPage: React.FC<SignInIntroPageProps> = ({
               </div>
               <h4 className="text-sm font-bold text-slate-100">14+ Minute Signal Delay</h4>
               <p className="text-xs text-slate-400 leading-relaxed">
-                Earth communication delay makes real-time telemedicine physically impossible. Onboard edge AI computes immediate guidance before ground signals arrive.
+                Earth communication delay makes real-time telemedicine physically impossible. Onboard flight computers execute immediate clinical countermeasures before ground signals arrive.
               </p>
             </div>
 
@@ -248,9 +248,9 @@ export const SignInIntroPage: React.FC<SignInIntroPageProps> = ({
               <div className="w-8 h-8 rounded-lg bg-cyan-950 border border-cyan-700 flex items-center justify-center text-cyan-400">
                 <Brain className="w-4 h-4" />
               </div>
-              <h4 className="text-sm font-bold text-slate-100">Evidence-Based Aerospace AI</h4>
+              <h4 className="text-sm font-bold text-slate-100">NASA Flight Human-System Standards</h4>
               <p className="text-xs text-slate-400 leading-relaxed">
-                Grounded in PubMed aerospace medicine and NASA Human Research Program protocols for microgravity fluid shift, SANS, and spinal elongation.
+                Built on NASA-STD-3001 and NASA Human Research Program protocols for microgravity fluid shift, SANS, and spinal elongation.
               </p>
             </div>
           </section>
@@ -337,7 +337,7 @@ export const SignInIntroPage: React.FC<SignInIntroPageProps> = ({
             <div>
               <h3 className="text-base font-bold text-slate-100">Astronaut Portal</h3>
               <p className="text-xs text-slate-300 mt-1 leading-relaxed">
-                For crew members on space transit. Fill daily check-ins, view your 3D anatomical body twin with dynamic pain mapping, and trigger autonomous AI triage.
+                For crew members on space transit. Fill daily check-ins, view your 3D anatomical body twin with dynamic pain mapping, and execute autonomous flight triage protocols.
               </p>
             </div>
             <div className="text-[11px] font-mono text-cyan-300 font-semibold pt-1">

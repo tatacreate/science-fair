@@ -1,15 +1,14 @@
 import React, { useState } from 'react';
-import { SimulationScenario, TriageLevel, AstronautProfile } from '../types/heliomed';
+import { SimulationScenario, TriageLevel } from '../types/heliomed';
 import { SPACEFLIGHT_SCENARIOS } from '../data/spaceflightScenarios';
 import {
-  AlertTriangle,
-  Play,
   RotateCcw,
-  Sparkles,
   CheckCircle2,
   Brain,
   Shield,
   Radio,
+  Play,
+  Cpu,
 } from 'lucide-react';
 
 interface ClinicalTriageEngineProps {
@@ -17,8 +16,6 @@ interface ClinicalTriageEngineProps {
   onSelectScenario: (scenario: SimulationScenario | null) => void;
   astronautName: string;
   triageLevel: TriageLevel;
-  onOpenThinkingModal: () => void;
-  isThinkingLoading: boolean;
 }
 
 export const ClinicalTriageEngine: React.FC<ClinicalTriageEngineProps> = ({
@@ -26,8 +23,6 @@ export const ClinicalTriageEngine: React.FC<ClinicalTriageEngineProps> = ({
   onSelectScenario,
   astronautName,
   triageLevel,
-  onOpenThinkingModal,
-  isThinkingLoading,
 }) => {
   const [completedActions, setCompletedActions] = useState<Record<string, boolean>>({});
 
@@ -46,10 +41,10 @@ export const ClinicalTriageEngine: React.FC<ClinicalTriageEngineProps> = ({
           <Brain className="w-5 h-5 text-indigo-400" />
           <div>
             <h3 className="text-base font-semibold text-slate-100 flex items-center gap-2">
-              Autonomous Edge Triage &amp; Clinical Scenarios
+              Autonomous Edge Triage &amp; Clinical Protocols
             </h3>
             <p className="text-xs text-slate-400">
-              Zero-latency clinical decision protocols for deep space transit (Earth latency 14m 28s)
+              100% Onboard Offline Execution &bull; Zero internet or cloud dependencies &bull; Earth latency 14m 28s
             </p>
           </div>
         </div>
@@ -68,15 +63,10 @@ export const ClinicalTriageEngine: React.FC<ClinicalTriageEngineProps> = ({
             </button>
           )}
 
-          <button
-            type="button"
-            onClick={onOpenThinkingModal}
-            disabled={isThinkingLoading}
-            className="px-4 py-1.5 rounded-lg bg-gradient-to-r from-indigo-600 to-cyan-600 hover:from-indigo-500 hover:to-cyan-500 text-white text-xs font-semibold flex items-center gap-2 shadow-lg shadow-indigo-950 transition-all cursor-pointer disabled:opacity-50"
-          >
-            <Sparkles className="w-4 h-4 text-amber-300" />
-            <span>{isThinkingLoading ? 'Synthesizing...' : 'Gemini Deep Thinking Triage'}</span>
-          </button>
+          <div className="px-3 py-1.5 rounded-lg bg-slate-800/80 border border-slate-700 text-cyan-300 text-xs font-mono flex items-center gap-1.5">
+            <Cpu className="w-3.5 h-3.5 text-cyan-400" />
+            <span>NASA-STD-3001 Edge Engine</span>
+          </div>
         </div>
       </div>
 
@@ -142,7 +132,7 @@ export const ClinicalTriageEngine: React.FC<ClinicalTriageEngineProps> = ({
 
             <div className="flex items-center gap-2 text-xs font-mono text-slate-400">
               <Radio className="w-4 h-4 text-amber-400 animate-pulse" />
-              <span>EARTH SYNC QUEUED (PACKET #702)</span>
+              <span>OFFLINE STORAGE ACTIVE &bull; SYNC QUEUED FOR DSN PASS</span>
             </div>
           </div>
 
@@ -187,7 +177,7 @@ export const ClinicalTriageEngine: React.FC<ClinicalTriageEngineProps> = ({
       ) : (
         <div className="bg-slate-950/60 border border-dashed border-slate-800 rounded-xl p-4 text-center text-xs text-slate-400">
           <p>
-            Current crew biometrics are <strong className="text-emerald-400">NOMINAL</strong>. Select a scenario above to inject acute spaceflight emergencies (Hypercapnia, Radiation SPE Storm, Microgravity Cardiac Deconditioning, or Decompression) to observe autonomous multi-stressor AI data fusion.
+            Current crew biometrics are <strong className="text-emerald-400">NOMINAL</strong>. Select a scenario above to simulate acute spaceflight clinical conditions (Hypercapnia, Radiation SPE Storm, Microgravity Cardiac Deconditioning, or Decompression) and review the onboard flight rules countermeasures.
           </p>
         </div>
       )}

@@ -48,7 +48,7 @@ export const TelemetryVitalsGrid: React.FC<TelemetryVitalsGridProps> = ({
         <div className="flex items-center gap-3 text-xs font-mono">
           <span className="text-slate-400">FUSION ENGINE:</span>
           <span className="px-2 py-0.5 rounded bg-emerald-950/80 border border-emerald-700/60 text-emerald-400 font-bold">
-            ONLINE (EDGE 0ms)
+            OFFLINE CAPSULE (0ms)
           </span>
         </div>
       </div>

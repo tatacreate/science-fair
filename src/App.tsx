@@ -28,18 +28,34 @@ import { OrbitautsEmblem } from './components/OrbitautsEmblem';
 import { Biometric3DViewer } from './components/Biometric3DViewer';
 import { TelemetryVitalsGrid } from './components/TelemetryVitalsGrid';
 import { ClinicalTriageEngine } from './components/ClinicalTriageEngine';
-import { GeminiThinkingModal } from './components/GeminiThinkingModal';
-import { LiteratureExplorer } from './components/LiteratureExplorer';
 import { WorkspaceHub } from './components/WorkspaceHub';
 import { DailyNotificationBanner } from './components/DailyNotificationBanner';
 import { DailySelfCheckinModal } from './components/DailySelfCheckinModal';
 import { SignInIntroPage } from './components/SignInIntroPage';
 import { DoctorDashboard } from './components/DoctorDashboard';
+import { RadiationMonitorModule } from './components/RadiationMonitorModule';
+import { SpaceExamWorkbench } from './components/SpaceExamWorkbench';
+import {
+  DynamicHealthCharts,
+  ChartDataPoint,
+  TrackedChartIndicatorId,
+} from './components/DynamicHealthCharts';
+import {
+  EnvironmentAndGamificationHub,
+  GamificationProgress,
+} from './components/EnvironmentAndGamificationHub';
+import { EmergencyAssistantModule } from './components/EmergencyAssistantModule';
+import { OsdrBenchmarkPanel } from './components/OsdrBenchmarkPanel';
+import { OsdrStudyDataset } from './data/osdrDatasets';
+import {
+  HABITAT_ENVIRONMENTS,
+  HabitatEnvironmentId,
+  RoutinePromptSpec,
+} from './data/habitatEnvironments';
 import { INITIAL_CREW, MissionCrewMember } from './data/missions';
 import {
   Radio,
   LogOut,
-  Sparkles,
   ClipboardCheck,
   Moon,
   Smile,
@@ -51,6 +67,8 @@ import {
   ChevronRight,
   Home,
   Users,
+  FileCheck,
+  Siren,
 } from 'lucide-react';
 
 export default function App() {
@@ -73,6 +91,46 @@ export default function App() {
   const [isCheckinModalOpen, setIsCheckinModalOpen] = useState(false);
   const [dailyCheckins, setDailyCheckins] = useState<DailyCheckin[]>([]);
   const [selectedHistoryCheckin, setSelectedHistoryCheckin] = useState<DailyCheckin | null>(null);
+
+  // Interactive 3D Body Region & Multi-Modal Exam Workbench Sync
+  const [selectedBodyRegionId, setSelectedBodyRegionId] = useState<string | null>(null);
+  const [examWorkbenchTab, setExamWorkbenchTab] = useState<'keyboard' | 'mouse' | 'camera' | 'guide' | null>(null);
+  const examSectionRef = React.useRef<HTMLDivElement>(null);
+  const emergencySectionRef = React.useRef<HTMLDivElement>(null);
+
+  // Multi-Environment Habitat & Gamification Progress
+  const [activeEnvId, setActiveEnvId] = useState<HabitatEnvironmentId>('spacecraft');
+  const [gamification, setGamification] = useState<GamificationProgress>(() => {
+    try {
+      const saved = localStorage.getItem('heliomed_gamification_progress');
+      if (saved) return JSON.parse(saved);
+    } catch {
+      // ignore
+    }
+    return {
+      xp: 85,
+      streakDays: 3,
+      completedRoutineIds: [],
+      examsLoggedCount: 1,
+    };
+  });
+
+  // Dynamic Chart Series (Updated live from telemetry + logged measurements)
+  const [customLoggedSeries, setCustomLoggedSeries] = useState<
+    Partial<Record<TrackedChartIndicatorId, ChartDataPoint[]>>
+  >({});
+  const [liveHrHistory, setLiveHrHistory] = useState<ChartDataPoint[]>([
+    { label: 'T-4m', value: 71 },
+    { label: 'T-3m', value: 73 },
+    { label: 'T-2m', value: 72 },
+    { label: 'T-1m', value: 72 },
+  ]);
+  const [liveRadHistory, setLiveRadHistory] = useState<ChartDataPoint[]>([
+    { label: 'T-4m', value: 2.1 },
+    { label: 'T-3m', value: 2.2 },
+    { label: 'T-2m', value: 2.1 },
+    { label: 'T-1m', value: 2.1 },
+  ]);
 
   // Active Simulation Scenario (for acute emergencies)
   const [activeScenario, setActiveScenario] = useState<SimulationScenario | null>(null);
@@ -102,10 +160,6 @@ export default function App() {
     fatigueScore: 24,
   });
 
-  // Gemini Thinking Modal State
-  const [isThinkingModalOpen, setIsThinkingModalOpen] = useState(false);
-  const [thinkingAnalysis, setThinkingAnalysis] = useState('');
-  const [isThinkingLoading, setIsThinkingLoading] = useState(false);
 
   // Active Mission & Crew lookup
   const activeMissionCode = missionCode || 'ARTEMIS-II';
@@ -196,8 +250,11 @@ export default function App() {
           };
         }
 
+        const envProfile =
+          HABITAT_ENVIRONMENTS.find((e) => e.id === activeEnvId) || HABITAT_ENVIRONMENTS[0];
         const hrDrift = (Math.random() - 0.5) * 1.5;
         const newHr = Math.min(85, Math.max(64, Math.round(prev.heartRate + hrDrift)));
+        const newRad = +(envProfile.radiationBaselineUSv + (Math.random() - 0.5) * 0.2).toFixed(1);
         return {
           ...prev,
           timestamp: Date.now(),
@@ -205,14 +262,104 @@ export default function App() {
           hrvRmssd: Math.min(75, Math.max(45, Math.round(prev.hrvRmssd + (Math.random() - 0.5)))),
           spo2: Math.min(99, Math.max(97, Math.round(prev.spo2 + (Math.random() > 0.8 ? -1 : 1)))),
           coreTemp: +(36.9 + (Math.random() - 0.5) * 0.15).toFixed(2),
-          radiationDoseRate: +(2.1 + (Math.random() - 0.5) * 0.1).toFixed(1),
+          radiationDoseRate: newRad,
           respiratoryRate: Math.min(18, Math.max(14, Math.round(prev.respiratoryRate + (Math.random() - 0.5)))),
         };
       });
     }, 1200);
 
     return () => clearInterval(interval);
-  }, [activeScenario]);
+  }, [activeScenario, activeEnvId]);
+
+  // Sample live HR & Radiation trajectory every 6 seconds for smooth time-series trend
+  useEffect(() => {
+    const chartTicker = setInterval(() => {
+      const timeLabel = new Date().toLocaleTimeString('en-US', {
+        minute: '2-digit',
+        second: '2-digit',
+      });
+      setLiveHrHistory((prev) => [...prev.slice(-5), { label: timeLabel, value: telemetry.heartRate }]);
+      setLiveRadHistory((prev) => [
+        ...prev.slice(-5),
+        { label: timeLabel, value: telemetry.radiationDoseRate },
+      ]);
+    }, 6000);
+    return () => clearInterval(chartTicker);
+  }, [telemetry.heartRate, telemetry.radiationDoseRate]);
+
+  const updateGamification = (updater: (prev: GamificationProgress) => GamificationProgress) => {
+    setGamification((prev) => {
+      const next = updater(prev);
+      try {
+        localStorage.setItem('heliomed_gamification_progress', JSON.stringify(next));
+      } catch {
+        // ignore
+      }
+      return next;
+    });
+  };
+
+  const handleChangeEnvironment = (envId: HabitatEnvironmentId) => {
+    setActiveEnvId(envId);
+    const profile = HABITAT_ENVIRONMENTS.find((e) => e.id === envId);
+    if (profile && !activeScenario) {
+      setCabinEnvironment((prev) => ({
+        ...prev,
+        ambientCO2: profile.ambientCO2Baseline,
+        ambientPressure: profile.pressureBaselineKpa,
+      }));
+      setTelemetry((prev) => ({
+        ...prev,
+        radiationDoseRate: profile.radiationBaselineUSv,
+      }));
+    }
+  };
+
+  const handleCompleteRoutine = (routine: RoutinePromptSpec) => {
+    updateGamification((prev) => {
+      if (prev.completedRoutineIds.includes(routine.id)) return prev;
+      return {
+        ...prev,
+        xp: prev.xp + routine.xpReward,
+        completedRoutineIds: [...prev.completedRoutineIds, routine.id],
+      };
+    });
+  };
+
+  const handleLaunchRoutineAction = (routine: RoutinePromptSpec) => {
+    setSelectedBodyRegionId(routine.targetRegionId);
+    if (routine.targetTab === 'daily_checkin') {
+      setIsCheckinModalOpen(true);
+    } else {
+      setExamWorkbenchTab(routine.targetTab);
+      examSectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+  };
+
+  const handleExamLogged = (indicatorId: string, numericValue: number | null) => {
+    updateGamification((prev) => ({
+      ...prev,
+      xp: prev.xp + 25,
+      examsLoggedCount: prev.examsLoggedCount + 1,
+    }));
+
+    if (
+      numericValue !== null &&
+      (indicatorId === 'glucose' || indicatorId === 'onsd' || indicatorId === 'urine_sg')
+    ) {
+      const timeLabel = new Date().toLocaleTimeString('en-US', {
+        hour: '2-digit',
+        minute: '2-digit',
+      });
+      setCustomLoggedSeries((prev) => {
+        const existing = prev[indicatorId] || [];
+        return {
+          ...prev,
+          [indicatorId]: [...existing.slice(-4), { label: timeLabel, value: numericValue }],
+        };
+      });
+    }
+  };
 
   // Handle Scenario Injection
   const handleSelectScenario = (sc: SimulationScenario | null) => {
@@ -222,16 +369,64 @@ export default function App() {
         ...prev,
         ...sc.cabinModifiers,
       }));
+      setTelemetry((prev) => ({
+        ...prev,
+        ...sc.vitalsModifiers,
+        timestamp: Date.now(),
+      }));
     } else {
+      const envProfile =
+        HABITAT_ENVIRONMENTS.find((e) => e.id === activeEnvId) || HABITAT_ENVIRONMENTS[0];
       setCabinEnvironment({
-        ambientCO2: 2.3,
-        ambientPressure: 101.3,
+        ambientCO2: envProfile.ambientCO2Baseline,
+        ambientPressure: envProfile.pressureBaselineKpa,
         cabinTemp: 21.8,
         o2Fraction: 21.2,
         relativeHumidity: 48,
         speRadiationFlux: 4.2,
       });
+      setTelemetry((prev) => ({
+        ...prev,
+        heartRate: 72,
+        hrvRmssd: 58,
+        spo2: 98,
+        respiratoryRate: 15,
+        radiationDoseRate: envProfile.radiationBaselineUSv,
+        systolicBp: 118,
+        diastolicBp: 76,
+        fatigueScore: 24,
+      }));
     }
+  };
+
+  const handleApplyOsdrTestCase = (dataset: OsdrStudyDataset) => {
+    handleSelectScenario(dataset.testScenario);
+    setSelectedBodyRegionId(dataset.targetRegionId);
+    setCabinEnvironment((prev) => ({
+      ...prev,
+      ...dataset.cabinOverride,
+    }));
+    setTelemetry((prev) => ({
+      ...prev,
+      ...dataset.vitalsOverride,
+      timestamp: Date.now(),
+    }));
+    if (dataset.chartTargetIndicator && dataset.chartSampleValue !== undefined) {
+      const targetId = dataset.chartTargetIndicator;
+      const val = dataset.chartSampleValue;
+      setCustomLoggedSeries((prev) => ({
+        ...prev,
+        [targetId]: [
+          ...(prev[targetId] || []).slice(-4),
+          { label: dataset.studyId, value: val },
+        ],
+      }));
+    }
+  };
+
+  const handleSimulateEmergency = (sc: SimulationScenario | null, regionId: string | null) => {
+    handleSelectScenario(sc);
+    setSelectedBodyRegionId(regionId);
   };
 
   // Save new daily checkin to Firestore or local state
@@ -247,32 +442,6 @@ export default function App() {
     }
   };
 
-  // Trigger Gemini-4 Deep Thinking
-  const handleTriggerThinking = async () => {
-    setIsThinkingModalOpen(true);
-    setIsThinkingLoading(true);
-    try {
-      const res = await fetch('/api/gemini/triage-thinking', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          astronaut: { name: astronautName, status: currentTriageLevel },
-          telemetry,
-          cabinEnvironment,
-          clinicalContext: activeScenario
-            ? `${activeScenario.name}: ${activeScenario.description}. Signs: ${activeScenario.clinicalSigns}`
-            : `Routine flight self-assessment. Latest sleep quality: ${dailyCheckins[0]?.sleepQuality || 7}/10. Pain reported: ${dailyCheckins[0]?.hasPain ? dailyCheckins[0]?.painAreas.join(', ') : 'None'}.`,
-        }),
-      });
-      const data = await res.json();
-      setThinkingAnalysis(data.analysis || 'Analysis complete.');
-    } catch (err: any) {
-      console.error('Failed to run thinking triage:', err);
-      setThinkingAnalysis('Error generating deep thinking triage. Please retry.');
-    } finally {
-      setIsThinkingLoading(false);
-    }
-  };
 
   const handleLogin = async (role: 'astronaut' | 'doctor', code: string, customName?: string) => {
     setIsLoggingIn(true);
@@ -416,6 +585,19 @@ export default function App() {
 
           {/* Deep Space Context & Status */}
           <div className="flex flex-wrap items-center gap-3 text-xs font-mono">
+            {/* Emergency SOS Quick Jump */}
+            <button
+              type="button"
+              onClick={() =>
+                emergencySectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+              }
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-rose-700 hover:bg-rose-600 border border-rose-500 text-white font-mono text-xs font-bold transition cursor-pointer whitespace-nowrap shrink-0"
+              title="Open Step-by-Step Emergency First-Response Wizard"
+            >
+              <Siren className="w-3.5 h-3.5" />
+              <span>Emergency SOS</span>
+            </button>
+
             {/* Return to Mission Home / Landing */}
             <button
               type="button"
@@ -532,11 +714,41 @@ export default function App() {
           </div>
         </div>
 
-        {/* Daily Notification Banner (Directly prompts the astronaut to fill out the form) */}
+        {/* Daily Notification & Scheduled Measurement Reminder Banner */}
         <DailyNotificationBanner
           onOpenCheckin={() => setIsCheckinModalOpen(true)}
           latestCheckin={latestCheckin}
           hasSubmittedToday={hasSubmittedToday}
+          dueRoutine={
+            (HABITAT_ENVIRONMENTS.find((e) => e.id === activeEnvId) || HABITAT_ENVIRONMENTS[0])
+              .routines.find((r) => !gamification.completedRoutineIds.includes(r.id)) ||
+            (HABITAT_ENVIRONMENTS.find((e) => e.id === activeEnvId) || HABITAT_ENVIRONMENTS[0])
+              .routines[0]
+          }
+          onStartDueRoutine={handleLaunchRoutineAction}
+        />
+
+        {/* Emergency First-Response Wizard (Plain-Language Non-Doctor SOS) */}
+        <div ref={emergencySectionRef}>
+          <EmergencyAssistantModule
+            astronautName={astronautName}
+            onSimulateEmergency={handleSimulateEmergency}
+            onLogEmergencyXp={(xpBonus) =>
+              updateGamification((prev) => ({
+                ...prev,
+                xp: prev.xp + xpBonus,
+              }))
+            }
+          />
+        </div>
+
+        {/* Multi-Environment Habitat Insights, Scheduled Prompts & Gamification */}
+        <EnvironmentAndGamificationHub
+          activeEnvId={activeEnvId}
+          onChangeEnvironment={handleChangeEnvironment}
+          onLaunchRoutineAction={handleLaunchRoutineAction}
+          gamification={gamification}
+          onCompleteRoutine={handleCompleteRoutine}
         />
 
         {/* Top Split: 3D Biometric Diagnostics Avatar + Telemetry Fused Grid */}
@@ -551,6 +763,14 @@ export default function App() {
               status={currentTriageLevel}
               painAreas={activePainAreas}
               activeScenario={activeScenario?.id}
+              astronautName={astronautName}
+              selectedRegionId={selectedBodyRegionId}
+              onRegionSelect={(regId) => setSelectedBodyRegionId(regId)}
+              onStartExamForRegion={(regId) => {
+                setSelectedBodyRegionId(regId);
+                setExamWorkbenchTab(regId === 'eyes_ocular' ? 'camera' : 'keyboard');
+                examSectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+              }}
             />
           </div>
 
@@ -564,6 +784,43 @@ export default function App() {
             />
           </div>
         </div>
+
+        {/* Multi-Modal In-Space Health Self-Assessment & Exam Workbench */}
+        <div ref={examSectionRef}>
+          <SpaceExamWorkbench
+            astronautName={astronautName}
+            selectedRegionId={selectedBodyRegionId}
+            onSelectRegion={(regId) => setSelectedBodyRegionId(regId)}
+            activeTabOverride={examWorkbenchTab}
+            onExamLogged={handleExamLogged}
+            onUpdateVitals={(updates) =>
+              setTelemetry((prev) => ({
+                ...prev,
+                ...updates,
+              }))
+            }
+          />
+        </div>
+
+        {/* Dynamic Time-Series Health Charts & Plain-Language Indicator Guides */}
+        <DynamicHealthCharts
+          liveHeartRate={telemetry.heartRate}
+          liveSpo2={telemetry.spo2}
+          liveRadiationRate={telemetry.radiationDoseRate}
+          customLoggedSeries={customLoggedSeries}
+          liveHrHistory={liveHrHistory}
+          liveRadHistory={liveRadHistory}
+        />
+
+        {/* Embedded Offline NASA OSDR Spaceflight Biology Benchmark & Testbench */}
+        <OsdrBenchmarkPanel
+          activeScenarioId={activeScenario?.id}
+          onApplyOsdrTestCase={handleApplyOsdrTestCase}
+          onResetOsdrTest={() => handleSimulateEmergency(null, null)}
+          liveTelemetry={telemetry}
+          liveCabin={cabinEnvironment}
+          onJumpToEnvironment={handleChangeEnvironment}
+        />
 
         {/* Astronaut Self-Check History & Habit Progression Section */}
         {latestCheckin && (
@@ -733,13 +990,13 @@ export default function App() {
               </div>
             </div>
 
-            {/* Autonomous Onboard AI Medical Guidance Banner */}
+            {/* Onboard Flight Medicine Guidance Banner */}
             {latestCheckin.aiFeedback && (
               <div className="p-4 rounded-xl bg-slate-950 border border-slate-800 space-y-2">
                 <div className="flex items-center justify-between text-xs font-mono font-bold text-cyan-400">
                   <span className="flex items-center gap-2">
-                    <Sparkles className="w-4 h-4 text-cyan-400" />
-                    AUTONOMOUS ONBOARD MEDICAL GUIDANCE (ZERO-LATENCY AI FLIGHT SURGEON):
+                    <FileCheck className="w-4 h-4 text-cyan-400" />
+                    ONBOARD FLIGHT MEDICINE GUIDANCE (NASA-STD-3001 PROTOCOL):
                   </span>
                   <span className="text-amber-400 flex items-center gap-1">
                     <Clock className="w-3.5 h-3.5" /> EARTH TRANSMIT QUEUED
@@ -759,8 +1016,15 @@ export default function App() {
           onSelectScenario={handleSelectScenario}
           astronautName={astronautName}
           triageLevel={currentTriageLevel}
-          onOpenThinkingModal={handleTriggerThinking}
-          isThinkingLoading={isThinkingLoading}
+        />
+
+        {/* Radiation Monitoring and Countermeasures Module */}
+        <RadiationMonitorModule
+          astronautName={astronautName}
+          missionCode={activeMissionCode}
+          currentDoseRate={telemetry.radiationDoseRate}
+          cumulativeCareerDose={currentAstronaut?.cumulativeRadiationDoseMsv || 14.2}
+          onDoseRateChange={(newRate) => setTelemetry((prev) => ({ ...prev, radiationDoseRate: newRate }))}
         />
 
         {/* Google Workspace Hub (Forms & Clinical Notes in Firestore) */}
@@ -768,11 +1032,10 @@ export default function App() {
           user={user}
           onSignInPrompt={() => handleLogin('astronaut', activeMissionCode)}
           astronautName={astronautName}
+          missionCode={activeMissionCode}
           dailyCheckins={dailyCheckins}
         />
 
-        {/* Aerospace Medicine & Scientific Evidence Hub (Search Grounding & PubMed) */}
-        <LiteratureExplorer />
 
         {/* The Orbitauts Mission Heritage & Bespoke Emblem Showcase */}
         <div className="p-6 rounded-2xl bg-gradient-to-r from-slate-900 via-slate-900 to-slate-950 border border-amber-900/40 shadow-2xl flex flex-col md:flex-row items-center justify-between gap-6">
@@ -812,15 +1075,6 @@ export default function App() {
         onSaveCheckin={handleSaveCheckin}
         telemetry={telemetry}
         cabin={cabinEnvironment}
-        astronautName={astronautName}
-      />
-
-      {/* Gemini Thinking Modal */}
-      <GeminiThinkingModal
-        isOpen={isThinkingModalOpen}
-        onClose={() => setIsThinkingModalOpen(false)}
-        analysisText={thinkingAnalysis}
-        isLoading={isThinkingLoading}
         astronautName={astronautName}
       />
     </div>

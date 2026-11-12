@@ -1,7 +1,17 @@
 import React, { useEffect, useRef, useState } from 'react';
 import * as THREE from 'three';
 import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js';
-import { AlertCircle, Activity, Sparkles, ShieldAlert, Crosshair, ChevronRight } from 'lucide-react';
+import {
+  AlertCircle,
+  Activity,
+  ShieldAlert,
+  Crosshair,
+  CheckCircle2,
+  Stethoscope,
+  ClipboardPlus,
+  X,
+} from 'lucide-react';
+import { ANATOMICAL_REGIONS, AnatomicalRegionInfo } from '../data/nasaHrpKnowledge';
 
 interface Biometric3DViewerProps {
   theme?: 'light' | 'dark';
@@ -15,79 +25,28 @@ interface Biometric3DViewerProps {
   heightClassName?: string;
   title?: string;
   astronautName?: string;
+  selectedRegionId?: string | null;
+  onRegionSelect?: (regionId: string | null) => void;
+  onStartExamForRegion?: (regionId: string) => void;
 }
 
-// Module-scope camera interpolation targets
+// Module-scope reusable math objects for zero-GC animation loop
 const _targetCameraPos = new THREE.Vector3(0, 1.25, 3.6);
 const _targetLookAt = new THREE.Vector3(0, 1.0, 0);
+const _worldPosTmp = new THREE.Vector3();
 
-// Clinical mitigation knowledge base for space medicine
-const PAIN_MITIGATION_DATABASE: Record<
-  string,
-  {
-    title: string;
-    clinicalMechanism: string;
-    aiMitigation: string;
-    priority: 'ADVISORY' | 'WARNING' | 'CRITICAL';
+// Map any clicked 3D mesh name to a canonical NASA HRP anatomical region
+function resolveRegionFromMeshName(meshName: string): AnatomicalRegionInfo | null {
+  for (const region of ANATOMICAL_REGIONS) {
+    if (region.meshNames.includes(meshName)) {
+      return region;
+    }
   }
-> = {
-  'Spine / Lumbar': {
-    title: 'Microgravity Spinal Elongation & Lumbar Tension',
-    clinicalMechanism:
-      'Absence of axial 1G gravitational load causes intervertebral discs to hyper-hydrate and expand up to 5-7cm, stretching paraspinal ligaments and inducing persistent morning lumbar ache.',
-    aiMitigation:
-      'Execute 15 minutes of knees-to-chest fetal stretching before beginning resistance training. Tighten sleeping sack axial bungee harness to 150N preload. Limit lumbar torque during ARED cycles.',
-    priority: 'ADVISORY',
-  },
-  Head: {
-    title: 'Cephalic Fluid Shift & Space Motion Syndrome / SANS',
-    clinicalMechanism:
-      'Cephalic migration of ~2 liters of vascular and interstitial fluid causes elevated intracranial pressure, facial engorgement, and sinus fullness without gravity-assisted venous drainage.',
-    aiMitigation:
-      'Elevate sleeping quarters head by 5 degrees if harness permits. Perform 20 minutes of Lower Body Negative Pressure (LBNP) session at -25 mmHg to redistribute venous pooling downward.',
-    priority: 'ADVISORY',
-  },
-  Neck: {
-    title: 'Cervical Spine Distraction & Microgravity Head Rest Strain',
-    clinicalMechanism:
-      'Continuous neutral body posture (NBP) floating angles place non-physiologic isometric load on posterior cervical extensors while viewing workstations.',
-    aiMitigation:
-      'Adjust console display height down by 12 degrees to neutral eye-line. Perform gentle chin tucks and isometric cervical contractions 3x daily. Apply topical thermal patch from medical locker.',
-    priority: 'ADVISORY',
-  },
-  'Joints / Knees': {
-    title: 'Joint Cartilage Microgravity Deconditioning',
-    clinicalMechanism:
-      'Reduced baseline articular joint compression combined with high peak loads during ARED eccentric repetitions causes patellofemoral and synovial inflammation.',
-    aiMitigation:
-      'Ensure knee alignment tracks second toe during squat cycle. Inspect footplate grip harness. Apply cryo-cuff cold therapy for 15 minutes post-exercise.',
-    priority: 'ADVISORY',
-  },
-  Joints: {
-    title: 'Articular Synovial Irritation & Harness Load',
-    clinicalMechanism:
-      'Microgravity fluid redistributions alter synovial joint lubricative fluid balance, exacerbated by tether harness friction.',
-    aiMitigation:
-      'Perform non-impact cycloid mobility drills for 10 minutes. Ensure 2.5L isotonic fluid balance is maintained to preserve synovial rheology.',
-    priority: 'ADVISORY',
-  },
-  Shoulders: {
-    title: 'Treadmill Harness Chafing & Acromioclavicular Impingement',
-    clinicalMechanism:
-      'T2 bungee shoulder straps exert high downward force across clavicular arches during countermeasure running cycles in microgravity.',
-    aiMitigation:
-      'Install viscoelastic shoulder padding buffers on T2 harness. Inspect skin for pressure erythema. Adjust bungee load vector by +5cm anteriorly.',
-    priority: 'ADVISORY',
-  },
-  Eyes: {
-    title: 'Spaceflight Associated Neuro-ocular Syndrome (SANS)',
-    clinicalMechanism:
-      'Chronic optic nerve sheath diameter expansion and mild posterior globe flattening induced by cephalad venous congestion.',
-    aiMitigation:
-      'Execute 20-20-20 visual hygiene protocol. Use prescribed SANS adjustable focal eyeglasses (+1.25D) for console work. Schedule optical coherence tomography (OCT) scan.',
-    priority: 'WARNING',
-  },
-};
+  if (meshName.startsWith('vertebra_')) {
+    return ANATOMICAL_REGIONS.find((r) => r.id === 'spine_lumbar') || null;
+  }
+  return null;
+}
 
 export const Biometric3DViewer: React.FC<Biometric3DViewerProps> = ({
   theme = 'dark',
@@ -101,14 +60,35 @@ export const Biometric3DViewer: React.FC<Biometric3DViewerProps> = ({
   heightClassName,
   title,
   astronautName,
+  selectedRegionId: controlledRegionId,
+  onRegionSelect,
+  onStartExamForRegion,
 }) => {
   const mountRef = useRef<HTMLDivElement>(null);
   const [viewLayer, setViewLayer] = useState<'skin' | 'skeleton' | 'biometric'>('skin');
   const [isRotating, setIsRotating] = useState<boolean>(true);
   const [cameraPreset, setCameraPreset] = useState<'full' | 'spine' | 'chest' | 'head'>('full');
-  const [selectedBodyPart, setSelectedBodyPart] = useState<string | null>(null);
+  const [internalRegionId, setInternalRegionId] = useState<string | null>(null);
+  const [hoveredRegionLabel, setHoveredRegionLabel] = useState<string | null>(null);
+  const [cursorPointer, setCursorPointer] = useState<boolean>(false);
 
-  // Dynamic telemetry ref for zero-GC animation loop
+  const selectedRegionId =
+    controlledRegionId !== undefined ? controlledRegionId : internalRegionId;
+
+  const selectRegion = (regionId: string | null) => {
+    setInternalRegionId(regionId);
+    onRegionSelect?.(regionId);
+    if (regionId) {
+      const region = ANATOMICAL_REGIONS.find((r) => r.id === regionId);
+      if (region) {
+        setCameraPreset(region.cameraPreset);
+      }
+    } else {
+      setCameraPreset('full');
+    }
+  };
+
+  // Refs synced to 60fps loop without recreating WebGL context
   const telemetryRef = useRef({ heartRate, spo2, radiationRate, status, painAreas, activeScenario });
   telemetryRef.current = { heartRate, spo2, radiationRate, status, painAreas, activeScenario };
 
@@ -117,6 +97,11 @@ export const Biometric3DViewer: React.FC<Biometric3DViewerProps> = ({
 
   const autoRotateRef = useRef(isRotating);
   autoRotateRef.current = isRotating;
+
+  const selectedRegionRef = useRef<string | null>(selectedRegionId);
+  selectedRegionRef.current = selectedRegionId;
+
+  const hoveredMeshRef = useRef<string | null>(null);
 
   useEffect(() => {
     const container = mountRef.current;
@@ -130,24 +115,41 @@ export const Biometric3DViewer: React.FC<Biometric3DViewerProps> = ({
     const isLight = theme === 'light';
     const bgColor = isLight ? 0xf8fafc : 0x050811;
     scene.background = new THREE.Color(bgColor);
-    scene.fog = new THREE.FogExp2(bgColor, 0.1);
+    scene.fog = new THREE.FogExp2(bgColor, 0.09);
 
     const camera = new THREE.PerspectiveCamera(45, width / height, 0.1, 50);
     camera.position.set(0, 1.25, 3.6);
 
-    // Renderer
-    const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
+    // Software WebGL guard per Three.js production standard
+    const isSoftwareGl = (() => {
+      try {
+        const gl = document.createElement('canvas').getContext('webgl2');
+        if (!gl) return true;
+        const ext = gl.getExtension('WEBGL_debug_renderer_info');
+        const param = ext ? ext.UNMASKED_RENDERER_WEBGL : gl.RENDERER;
+        const gpu = String(gl.getParameter(param));
+        gl.getExtension('WEBGL_lose_context')?.loseContext();
+        return /SwiftShader|llvmpipe|softpipe|Software|Basic Render/i.test(gpu);
+      } catch {
+        return false;
+      }
+    })();
+
+    const renderer = new THREE.WebGLRenderer({
+      antialias: !isSoftwareGl,
+      powerPreference: 'high-performance',
+    });
     renderer.setSize(width, height);
-    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    renderer.setPixelRatio(isSoftwareGl ? 1 : Math.min(window.devicePixelRatio, 2));
     renderer.outputColorSpace = THREE.SRGBColorSpace;
     renderer.toneMapping = THREE.ACESFilmicToneMapping;
     renderer.toneMappingExposure = isLight ? 1.05 : 1.35;
-    renderer.shadowMap.enabled = true;
+    renderer.shadowMap.enabled = !isSoftwareGl;
     renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 
     container.appendChild(renderer.domElement);
 
-    // Studio Environment
+    // Studio Environment Reflection
     const pmremGenerator = new THREE.PMREMGenerator(renderer);
     scene.environment = pmremGenerator.fromScene(new RoomEnvironment(), 0.04).texture;
     pmremGenerator.dispose();
@@ -155,12 +157,16 @@ export const Biometric3DViewer: React.FC<Biometric3DViewerProps> = ({
     // Studio 3-Point Lighting Rig
     const keyLight = new THREE.DirectionalLight(0xffffff, isLight ? 2.0 : 2.5);
     keyLight.position.set(2.5, 4.0, 3.0);
-    keyLight.castShadow = true;
+    keyLight.castShadow = !isSoftwareGl;
     keyLight.shadow.mapSize.set(1024, 1024);
     keyLight.shadow.bias = -0.0005;
     scene.add(keyLight);
 
-    const fillLight = new THREE.HemisphereLight(0x00f0ff, isLight ? 0xe2e8f0 : 0x0a1120, isLight ? 1.4 : 1.6);
+    const fillLight = new THREE.HemisphereLight(
+      0x00f0ff,
+      isLight ? 0xe2e8f0 : 0x0a1120,
+      isLight ? 1.4 : 1.6
+    );
     scene.add(fillLight);
 
     const rimLight = new THREE.DirectionalLight(0x00f0ff, isLight ? 1.6 : 2.8);
@@ -181,6 +187,7 @@ export const Biometric3DViewer: React.FC<Biometric3DViewerProps> = ({
       sCtx.fillRect(0, 0, 256, 256);
     }
     const shadowTexture = new THREE.CanvasTexture(shadowCanvas);
+    shadowTexture.colorSpace = THREE.SRGBColorSpace;
     const shadowGeo = new THREE.PlaneGeometry(2.4, 2.4);
     const shadowMat = new THREE.MeshBasicMaterial({
       map: shadowTexture,
@@ -204,30 +211,27 @@ export const Biometric3DViewer: React.FC<Biometric3DViewerProps> = ({
     scene.add(gridHelper);
 
     // ========================================================
-    // Stylized Hologram Medical Mannequin Group
+    // Interactive 3D Anatomical Mannequin Group
     // ========================================================
     const humanBodyGroup = new THREE.Group();
     humanBodyGroup.position.set(0, 0, 0);
 
-    // Registry of named anatomical body parts for dynamic pain mapping
     const anatomicalMeshMap = new Map<string, THREE.Mesh>();
+    const clickableMeshes: THREE.Mesh[] = [];
 
-    // 1. Cool Holographic Cyan Base Material (#00f0ff)
     const baseHoloMat = new THREE.MeshPhysicalMaterial({
       color: 0x00f0ff,
       emissive: 0x004d66,
       emissiveIntensity: 0.35,
       roughness: 0.18,
       metalness: 0.1,
-      transmission: 0.65,
+      transmission: isSoftwareGl ? 0 : 0.65,
       transparent: true,
       opacity: 0.82,
       clearcoat: 0.9,
       clearcoatRoughness: 0.1,
-      wireframe: false,
     });
 
-    // 2. Glowing Joint Node Material (Spherical articulation nodes)
     const jointMat = new THREE.MeshStandardMaterial({
       color: 0x38bdf8,
       emissive: 0x0284c7,
@@ -236,29 +240,26 @@ export const Biometric3DViewer: React.FC<Biometric3DViewerProps> = ({
       metalness: 0.4,
     });
 
-    // Helper to instantiate, name, and register each proportioned segment
     const createAnatomicalMesh = (
       geo: THREE.BufferGeometry,
       name: string,
       pos: [number, number, number],
       rot?: [number, number, number],
-      isJoint: boolean = false
+      isJoint = false
     ): THREE.Mesh => {
-      // Create independent clone of material so each mesh can pulse hazard red independently
       const mat = (isJoint ? jointMat : baseHoloMat).clone();
       const mesh = new THREE.Mesh(geo, mat);
       mesh.name = name;
       mesh.position.set(...pos);
       if (rot) mesh.rotation.set(...rot);
-      mesh.castShadow = true;
+      mesh.castShadow = !isSoftwareGl;
       humanBodyGroup.add(mesh);
       anatomicalMeshMap.set(name, mesh);
+      clickableMeshes.push(mesh);
       return mesh;
     };
 
-    // ----------------------------------------------------
-    // Head & Neck (Proportioned smooth geometries)
-    // ----------------------------------------------------
+    // Head & Neck
     const headGeo = new THREE.SphereGeometry(0.125, 32, 24);
     headGeo.scale(0.85, 1.15, 0.95);
     createAnatomicalMesh(headGeo, 'head', [0, 1.68, 0]);
@@ -266,27 +267,42 @@ export const Biometric3DViewer: React.FC<Biometric3DViewerProps> = ({
     const neckGeo = new THREE.CylinderGeometry(0.05, 0.058, 0.12, 20);
     createAnatomicalMesh(neckGeo, 'neck', [0, 1.51, 0]);
 
-    // ----------------------------------------------------
-    // Torso (Two anatomical segments: Upper Chest & Abdomen/Pelvis)
-    // ----------------------------------------------------
-    // Upper Chest: Tapered curved cylinder
+    // Eyes / Optic Nerve Targets (Clickable SANS targets)
+    const eyeGeo = new THREE.SphereGeometry(0.022, 16, 16);
+    const eyeMat = new THREE.MeshStandardMaterial({
+      color: 0x38bdf8,
+      emissive: 0x0ea5e9,
+      emissiveIntensity: 1.1,
+      roughness: 0.15,
+    });
+    const leftEye = new THREE.Mesh(eyeGeo, eyeMat);
+    leftEye.name = 'left_eye';
+    leftEye.position.set(-0.042, 1.7, 0.098);
+    humanBodyGroup.add(leftEye);
+    anatomicalMeshMap.set('left_eye', leftEye);
+    clickableMeshes.push(leftEye);
+
+    const rightEye = new THREE.Mesh(eyeGeo, eyeMat.clone());
+    rightEye.name = 'right_eye';
+    rightEye.position.set(0.042, 1.7, 0.098);
+    humanBodyGroup.add(rightEye);
+    anatomicalMeshMap.set('right_eye', rightEye);
+    clickableMeshes.push(rightEye);
+
+    // Torso (Chest, Abdomen, Pelvis / Lower Back)
     const chestGeo = new THREE.CylinderGeometry(0.21, 0.165, 0.36, 24);
     chestGeo.scale(1.2, 1.0, 0.72);
     createAnatomicalMesh(chestGeo, 'chest', [0, 1.28, 0]);
 
-    // Abdomen
     const abdomenGeo = new THREE.CylinderGeometry(0.165, 0.175, 0.24, 24);
     abdomenGeo.scale(1.1, 1.0, 0.7);
     createAnatomicalMesh(abdomenGeo, 'abdomen', [0, 1.0, 0]);
 
-    // Pelvis / Lower Back
     const pelvisGeo = new THREE.CylinderGeometry(0.18, 0.155, 0.18, 20);
     pelvisGeo.scale(1.18, 1.0, 0.75);
     createAnatomicalMesh(pelvisGeo, 'lower_back', [0, 0.8, 0]);
 
-    // ----------------------------------------------------
-    // Joint Articulation Nodes (Shoulders, Elbows, Hips, Knees)
-    // ----------------------------------------------------
+    // Joint Articulation Nodes
     const shoulderNodeGeo = new THREE.SphereGeometry(0.055, 16, 16);
     createAnatomicalMesh(shoulderNodeGeo, 'left_shoulder', [-0.24, 1.4, 0], undefined, true);
     createAnatomicalMesh(shoulderNodeGeo, 'right_shoulder', [0.24, 1.4, 0], undefined, true);
@@ -303,42 +319,32 @@ export const Biometric3DViewer: React.FC<Biometric3DViewerProps> = ({
     createAnatomicalMesh(kneeNodeGeo, 'left_knee', [-0.11, 0.33, 0.02], undefined, true);
     createAnatomicalMesh(kneeNodeGeo, 'right_knee', [0.11, 0.33, 0.02], undefined, true);
 
-    // ----------------------------------------------------
-    // Limbs: Separated Upper & Lower Segments (Arms & Legs)
-    // ----------------------------------------------------
-    // Upper Arms
+    // Upper & Lower Limbs
     const upperArmGeo = new THREE.CylinderGeometry(0.042, 0.038, 0.28, 16);
     createAnatomicalMesh(upperArmGeo, 'left_upper_arm', [-0.26, 1.23, 0.01], [0, 0, 0.12]);
     createAnatomicalMesh(upperArmGeo, 'right_upper_arm', [0.26, 1.23, 0.01], [0, 0, -0.12]);
 
-    // Lower Arms (Forearms)
     const forearmGeo = new THREE.CylinderGeometry(0.036, 0.03, 0.26, 16);
     createAnatomicalMesh(forearmGeo, 'left_forearm', [-0.29, 0.93, 0.04], [0, 0, 0.08]);
     createAnatomicalMesh(forearmGeo, 'right_forearm', [0.29, 0.93, 0.04], [0, 0, -0.08]);
 
-    // Hands
     const handGeo = new THREE.BoxGeometry(0.045, 0.08, 0.022);
     createAnatomicalMesh(handGeo, 'left_hand', [-0.3, 0.74, 0.05]);
     createAnatomicalMesh(handGeo, 'right_hand', [0.3, 0.74, 0.05]);
 
-    // Thighs (Upper Legs)
     const thighGeo = new THREE.CylinderGeometry(0.072, 0.054, 0.38, 18);
     createAnatomicalMesh(thighGeo, 'left_thigh', [-0.11, 0.53, 0]);
     createAnatomicalMesh(thighGeo, 'right_thigh', [0.11, 0.53, 0]);
 
-    // Calves (Lower Legs)
     const calfGeo = new THREE.CylinderGeometry(0.05, 0.038, 0.36, 18);
     createAnatomicalMesh(calfGeo, 'left_calf', [-0.11, 0.18, 0]);
     createAnatomicalMesh(calfGeo, 'right_calf', [0.11, 0.18, 0]);
 
-    // Feet
     const footGeo = new THREE.BoxGeometry(0.07, 0.045, 0.16);
     createAnatomicalMesh(footGeo, 'left_foot', [-0.11, 0.03, 0.04]);
     createAnatomicalMesh(footGeo, 'right_foot', [0.11, 0.03, 0.04]);
 
-    // ----------------------------------------------------
     // Internal Organs: Pulsing Heart Core & Resonant Lungs
-    // ----------------------------------------------------
     const heartGeo = new THREE.SphereGeometry(0.065, 18, 18);
     const heartMat = new THREE.MeshStandardMaterial({
       color: 0xef4444,
@@ -351,12 +357,12 @@ export const Biometric3DViewer: React.FC<Biometric3DViewerProps> = ({
     heartMesh.position.set(0.035, 1.26, 0.05);
     humanBodyGroup.add(heartMesh);
     anatomicalMeshMap.set('heart', heartMesh);
+    clickableMeshes.push(heartMesh);
 
     const heartLight = new THREE.PointLight(0xff3366, 1.8, 0.9);
     heartLight.position.set(0.035, 1.26, 0.06);
     humanBodyGroup.add(heartLight);
 
-    // Lungs
     const lungGeo = new THREE.SphereGeometry(0.078, 16, 16);
     lungGeo.scale(0.8, 1.35, 0.7);
     const lungMat = new THREE.MeshStandardMaterial({
@@ -371,11 +377,15 @@ export const Biometric3DViewer: React.FC<Biometric3DViewerProps> = ({
     leftLung.name = 'left_lung';
     leftLung.position.set(-0.09, 1.25, 0.02);
     humanBodyGroup.add(leftLung);
+    anatomicalMeshMap.set('left_lung', leftLung);
+    clickableMeshes.push(leftLung);
 
     const rightLung = new THREE.Mesh(lungGeo, lungMat.clone());
     rightLung.name = 'right_lung';
     rightLung.position.set(0.12, 1.25, 0.02);
     humanBodyGroup.add(rightLung);
+    anatomicalMeshMap.set('right_lung', rightLung);
+    clickableMeshes.push(rightLung);
 
     // Brain Crown
     const brainGeo = new THREE.SphereGeometry(0.09, 16, 16);
@@ -391,8 +401,10 @@ export const Biometric3DViewer: React.FC<Biometric3DViewerProps> = ({
     brainMesh.name = 'brain';
     brainMesh.position.set(0, 1.68, 0.02);
     humanBodyGroup.add(brainMesh);
+    anatomicalMeshMap.set('brain', brainMesh);
+    clickableMeshes.push(brainMesh);
 
-    // Vertebrae Spinal Column (14 anatomical segments)
+    // Vertebrae Spinal Column (14 clickable anatomical segments)
     const spineMat = new THREE.MeshStandardMaterial({
       color: 0xe2e8f0,
       emissive: 0x000000,
@@ -412,6 +424,35 @@ export const Biometric3DViewer: React.FC<Biometric3DViewerProps> = ({
       vMesh.rotation.x = Math.PI / 2;
       humanBodyGroup.add(vMesh);
       spineSegments.push(vMesh);
+      clickableMeshes.push(vMesh);
+    }
+
+    // Internal Femur & Ribcage hints for Skeleton Mode
+    const skeletonBones: THREE.Mesh[] = [];
+    const boneMat = new THREE.MeshStandardMaterial({
+      color: 0xcbd5e1,
+      roughness: 0.35,
+      metalness: 0.25,
+    });
+    const femurGeo = new THREE.CylinderGeometry(0.022, 0.018, 0.36, 12);
+    const leftFemur = new THREE.Mesh(femurGeo, boneMat);
+    leftFemur.position.set(-0.11, 0.53, 0);
+    humanBodyGroup.add(leftFemur);
+    skeletonBones.push(leftFemur);
+
+    const rightFemur = new THREE.Mesh(femurGeo, boneMat.clone());
+    rightFemur.position.set(0.11, 0.53, 0);
+    humanBodyGroup.add(rightFemur);
+    skeletonBones.push(rightFemur);
+
+    for (let r = 0; r < 5; r++) {
+      const ribGeo = new THREE.TorusGeometry(0.14 - r * 0.008, 0.009, 8, 20, Math.PI * 1.45);
+      const ribMesh = new THREE.Mesh(ribGeo, boneMat.clone());
+      ribMesh.position.set(0, 1.38 - r * 0.055, -0.01);
+      ribMesh.rotation.x = Math.PI / 2;
+      ribMesh.rotation.z = -Math.PI * 0.22;
+      humanBodyGroup.add(ribMesh);
+      skeletonBones.push(ribMesh);
     }
 
     // Outer Holographic Biometric Aura
@@ -426,62 +467,115 @@ export const Biometric3DViewer: React.FC<Biometric3DViewerProps> = ({
     auraMesh.position.set(0, 0.95, 0);
     humanBodyGroup.add(auraMesh);
 
+    // Animated Selection Target Ring around clicked body region
+    const selectionRingGeo = new THREE.TorusGeometry(0.22, 0.008, 12, 36);
+    const selectionRingMat = new THREE.MeshBasicMaterial({
+      color: 0xf59e0b,
+      transparent: true,
+      opacity: 0.9,
+    });
+    const selectionRing = new THREE.Mesh(selectionRingGeo, selectionRingMat);
+    selectionRing.rotation.x = Math.PI / 2;
+    selectionRing.visible = false;
+    humanBodyGroup.add(selectionRing);
+
     scene.add(humanBodyGroup);
 
     // ========================================================
-    // Interactive Raycasting (Click Mesh to view Biometric Details)
+    // Interactive Raycasting (Click + Throttled Hover)
     // ========================================================
     const raycaster = new THREE.Raycaster();
     const mouse = new THREE.Vector2();
 
-    const handleCanvasClick = (e: MouseEvent) => {
+    let isDragging = false;
+    let pointerDownPos = { x: 0, y: 0 };
+    let prevMouseX = 0;
+    let prevMouseY = 0;
+    let lastHoverCheck = 0;
+
+    const handlePointerDown = (e: MouseEvent) => {
+      isDragging = true;
+      pointerDownPos = { x: e.clientX, y: e.clientY };
+      prevMouseX = e.clientX;
+      prevMouseY = e.clientY;
+    };
+
+    const handlePointerMove = (e: MouseEvent) => {
+      if (isDragging) {
+        const deltaX = e.clientX - prevMouseX;
+        const deltaY = e.clientY - prevMouseY;
+        prevMouseX = e.clientX;
+        prevMouseY = e.clientY;
+
+        humanBodyGroup.rotation.y += deltaX * 0.008;
+        camera.position.y = Math.max(0.3, Math.min(2.5, camera.position.y - deltaY * 0.005));
+        return;
+      }
+
+      // Throttled hover raycasting (~20fps max)
+      const now = Date.now();
+      if (now - lastHoverCheck < 50) return;
+      lastHoverCheck = now;
+
       const rect = renderer.domElement.getBoundingClientRect();
+      if (
+        e.clientX < rect.left ||
+        e.clientX > rect.right ||
+        e.clientY < rect.top ||
+        e.clientY > rect.bottom
+      ) {
+        return;
+      }
+
       mouse.x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
       mouse.y = -((e.clientY - rect.top) / rect.height) * 2 + 1;
 
       raycaster.setFromCamera(mouse, camera);
-      const intersects = raycaster.intersectObjects(humanBodyGroup.children, true);
+      const intersects = raycaster.intersectObjects(clickableMeshes, false);
 
       if (intersects.length > 0) {
-        const hit = intersects.find((i) => i.object.name && !i.object.name.startsWith('vertebra_'));
-        if (hit && hit.object.name) {
-          setSelectedBodyPart(hit.object.name);
+        const hitName = intersects[0].object.name;
+        const region = resolveRegionFromMeshName(hitName);
+        hoveredMeshRef.current = hitName;
+        setHoveredRegionLabel(region ? region.shortLabel : hitName.replace(/_/g, ' '));
+        setCursorPointer(true);
+      } else {
+        hoveredMeshRef.current = null;
+        setHoveredRegionLabel(null);
+        setCursorPointer(false);
+      }
+    };
+
+    const handlePointerUp = (e: MouseEvent) => {
+      const movedDist = Math.hypot(
+        e.clientX - pointerDownPos.x,
+        e.clientY - pointerDownPos.y
+      );
+      isDragging = false;
+
+      // Treat short click (<6px drag) as anatomical part selection
+      if (movedDist < 6) {
+        const rect = renderer.domElement.getBoundingClientRect();
+        mouse.x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
+        mouse.y = -((e.clientY - rect.top) / rect.height) * 2 + 1;
+
+        raycaster.setFromCamera(mouse, camera);
+        const intersects = raycaster.intersectObjects(clickableMeshes, false);
+
+        if (intersects.length > 0) {
+          const hit = intersects[0].object;
+          const region = resolveRegionFromMeshName(hit.name);
+          if (region) {
+            selectRegion(region.id);
+          }
         }
       }
     };
 
     const dom = renderer.domElement;
-    dom.addEventListener('click', handleCanvasClick);
-
-    // Orbit Drag Controls
-    let isDragging = false;
-    let prevMouseX = 0;
-    let prevMouseY = 0;
-
-    const handleMouseDown = (e: MouseEvent) => {
-      isDragging = true;
-      prevMouseX = e.clientX;
-      prevMouseY = e.clientY;
-    };
-
-    const handleMouseMove = (e: MouseEvent) => {
-      if (!isDragging) return;
-      const deltaX = e.clientX - prevMouseX;
-      const deltaY = e.clientY - prevMouseY;
-      prevMouseX = e.clientX;
-      prevMouseY = e.clientY;
-
-      humanBodyGroup.rotation.y += deltaX * 0.008;
-      camera.position.y = Math.max(0.3, Math.min(2.5, camera.position.y - deltaY * 0.005));
-    };
-
-    const handleMouseUp = () => {
-      isDragging = false;
-    };
-
-    dom.addEventListener('mousedown', handleMouseDown);
-    window.addEventListener('mousemove', handleMouseMove);
-    window.addEventListener('mouseup', handleMouseUp);
+    dom.addEventListener('mousedown', handlePointerDown);
+    window.addEventListener('mousemove', handlePointerMove);
+    window.addEventListener('mouseup', handlePointerUp);
 
     const handleResize = () => {
       if (!container) return;
@@ -504,11 +598,12 @@ export const Biometric3DViewer: React.FC<Biometric3DViewerProps> = ({
       const delta = clock.getDelta();
       const elapsed = clock.getElapsedTime();
 
-      const { heartRate: hr, status: st, painAreas: pAreas } = telemetryRef.current;
+      const { heartRate: hr, painAreas: pAreas } = telemetryRef.current;
       const layer = layerRef.current;
       const autoRotate = autoRotateRef.current;
+      const activeRegId = selectedRegionRef.current;
+      const hoveredMesh = hoveredMeshRef.current;
 
-      // Turntable smooth auto-rotation
       if (autoRotate && !isDragging) {
         humanBodyGroup.rotation.y += delta * 0.35;
       }
@@ -526,9 +621,7 @@ export const Biometric3DViewer: React.FC<Biometric3DViewerProps> = ({
       leftLung.scale.set(0.8 * lungScale, 1.35 * lungScale, 0.7 * lungScale);
       rightLung.scale.set(0.8 * lungScale, 1.35 * lungScale, 0.7 * lungScale);
 
-      // ========================================================
-      // Dynamic Pain Mapping: Red Hazard Spot Logic (#ff3366)
-      // ========================================================
+      // Pain hazard evaluation
       const isSpineInPain = pAreas.some((a) => /spine|lumbar|back/i.test(a));
       const isHeadInPain = pAreas.some((a) => /head|brain/i.test(a));
       const isNeckInPain = pAreas.some((a) => /neck/i.test(a));
@@ -536,9 +629,30 @@ export const Biometric3DViewer: React.FC<Biometric3DViewerProps> = ({
       const isShouldersInPain = pAreas.some((a) => /shoulder/i.test(a));
       const isEyesInPain = pAreas.some((a) => /eye/i.test(a));
 
-      const hazardPulse = (Math.sin(elapsed * 4.5) + 1) * 0.5; // Emissive pulse intensity
+      const hazardPulse = (Math.sin(elapsed * 4.5) + 1) * 0.5;
+      const activeRegionObj = activeRegId
+        ? ANATOMICAL_REGIONS.find((r) => r.id === activeRegId)
+        : null;
 
-      // Evaluate every anatomical mesh in registry
+      // Position Selection Ring around selected region
+      if (activeRegionObj && activeRegionObj.meshNames.length > 0) {
+        const anchorMesh = anatomicalMeshMap.get(activeRegionObj.meshNames[0]);
+        if (anchorMesh) {
+          selectionRing.visible = true;
+          _worldPosTmp.copy(anchorMesh.position);
+          selectionRing.position.set(0, _worldPosTmp.y, 0);
+          const ringScale =
+            activeRegionObj.id === 'head_brain' || activeRegionObj.id === 'eyes_ocular'
+              ? 0.75
+              : 1.0 + Math.sin(elapsed * 3.5) * 0.08;
+          selectionRing.scale.set(ringScale, ringScale, 1);
+          selectionRing.rotation.z = elapsed * 0.8;
+        }
+      } else {
+        selectionRing.visible = false;
+      }
+
+      // Color & Material state across all anatomical meshes
       anatomicalMeshMap.forEach((mesh, name) => {
         const mat = mesh.material as THREE.MeshStandardMaterial | THREE.MeshPhysicalMaterial;
         let isHazard = false;
@@ -546,7 +660,9 @@ export const Biometric3DViewer: React.FC<Biometric3DViewerProps> = ({
         if (name === 'lower_back' || name === 'abdomen') {
           isHazard = isSpineInPain;
         } else if (name === 'head') {
-          isHazard = isHeadInPain || isEyesInPain;
+          isHazard = isHeadInPain;
+        } else if (name === 'left_eye' || name === 'right_eye') {
+          isHazard = isEyesInPain;
         } else if (name === 'neck') {
           isHazard = isNeckInPain;
         } else if (name.includes('shoulder')) {
@@ -555,23 +671,42 @@ export const Biometric3DViewer: React.FC<Biometric3DViewerProps> = ({
           isHazard = isJointsInPain;
         }
 
+        const isSelectedMesh = activeRegionObj ? activeRegionObj.meshNames.includes(name) : false;
+        const isHoveredMesh = hoveredMesh === name;
+
         if (isHazard) {
-          // Bright glowing medical hazard red (#ff3366) with emissive pulse
           mat.color.setHex(0xff3366);
           mat.emissive.setHex(0xff1744);
           mat.emissiveIntensity = 1.4 + hazardPulse * 1.2;
-          if ('transmission' in mat) mat.transmission = 0.25;
+          if ('transmission' in mat) mat.transmission = isSoftwareGl ? 0 : 0.25;
+        } else if (isSelectedMesh) {
+          mat.color.setHex(0xfbbf24);
+          mat.emissive.setHex(0xd97706);
+          mat.emissiveIntensity = 1.15;
+          if ('transmission' in mat) mat.transmission = isSoftwareGl ? 0 : 0.35;
+        } else if (isHoveredMesh) {
+          mat.color.setHex(0x67e8f9);
+          mat.emissive.setHex(0x06b6d4);
+          mat.emissiveIntensity = 0.95;
         } else {
-          // Cool holographic cyan (#00f0ff) with low opacity / translucent depth
-          if (name.includes('shoulder') || name.includes('knee') || name.includes('elbow') || name.includes('hip')) {
+          if (
+            name.includes('shoulder') ||
+            name.includes('knee') ||
+            name.includes('elbow') ||
+            name.includes('hip')
+          ) {
             mat.color.setHex(0x38bdf8);
             mat.emissive.setHex(0x0284c7);
             mat.emissiveIntensity = 0.5;
+          } else if (name === 'left_eye' || name === 'right_eye') {
+            mat.color.setHex(0x38bdf8);
+            mat.emissive.setHex(0x0ea5e9);
+            mat.emissiveIntensity = 1.0;
           } else if (name !== 'heart') {
             mat.color.setHex(0x00f0ff);
             mat.emissive.setHex(0x004d66);
             mat.emissiveIntensity = 0.35;
-            if ('transmission' in mat) mat.transmission = 0.65;
+            if ('transmission' in mat) mat.transmission = isSoftwareGl ? 0 : 0.65;
           }
         }
       });
@@ -583,6 +718,10 @@ export const Biometric3DViewer: React.FC<Biometric3DViewerProps> = ({
           sMat.color.setHex(0xff3366);
           sMat.emissive.setHex(0xff1744);
           sMat.emissiveIntensity = 1.6 + hazardPulse * 1.4;
+        } else if (activeRegionObj?.id === 'spine_lumbar') {
+          sMat.color.setHex(0xfbbf24);
+          sMat.emissive.setHex(0xd97706);
+          sMat.emissiveIntensity = 1.0;
         } else {
           sMat.color.setHex(0xe2e8f0);
           sMat.emissive.setHex(0x000000);
@@ -590,28 +729,47 @@ export const Biometric3DViewer: React.FC<Biometric3DViewerProps> = ({
         }
       });
 
-      // Layer visibilities
+      // Layer visibility states
       if (layer === 'skeleton') {
         anatomicalMeshMap.forEach((m, name) => {
-          if (!name.includes('spine') && !name.includes('joint') && name !== 'lower_back') {
-            m.visible = false;
+          const isBoneOrJoint =
+            name.includes('shoulder') ||
+            name.includes('knee') ||
+            name.includes('elbow') ||
+            name.includes('hip') ||
+            name === 'lower_back' ||
+            name === 'head';
+          m.visible = isBoneOrJoint;
+          if (name === 'head') {
+            (m.material as THREE.MeshPhysicalMaterial).opacity = 0.25;
           }
         });
+        skeletonBones.forEach((b) => (b.visible = true));
         auraMesh.visible = false;
       } else if (layer === 'biometric') {
-        anatomicalMeshMap.forEach((m) => (m.visible = true));
-        baseHoloMat.opacity = 0.45;
+        anatomicalMeshMap.forEach((m) => {
+          m.visible = true;
+          if (m.material instanceof THREE.MeshPhysicalMaterial) {
+            m.material.opacity = 0.42;
+          }
+        });
+        skeletonBones.forEach((b) => (b.visible = true));
         auraMesh.visible = true;
       } else {
-        anatomicalMeshMap.forEach((m) => (m.visible = true));
-        baseHoloMat.opacity = 0.82;
+        anatomicalMeshMap.forEach((m) => {
+          m.visible = true;
+          if (m.material instanceof THREE.MeshPhysicalMaterial) {
+            m.material.opacity = 0.82;
+          }
+        });
+        skeletonBones.forEach((b) => (b.visible = false));
         auraMesh.visible = false;
       }
 
       // Smooth camera damping
-      camera.position.x = THREE.MathUtils.damp(camera.position.x, _targetCameraPos.x, 3, delta);
-      camera.position.y = THREE.MathUtils.damp(camera.position.y, _targetCameraPos.y, 3, delta);
-      camera.position.z = THREE.MathUtils.damp(camera.position.z, _targetCameraPos.z, 3, delta);
+      camera.position.x = THREE.MathUtils.damp(camera.position.x, _targetCameraPos.x, 3.5, delta);
+      camera.position.y = THREE.MathUtils.damp(camera.position.y, _targetCameraPos.y, 3.5, delta);
+      camera.position.z = THREE.MathUtils.damp(camera.position.z, _targetCameraPos.z, 3.5, delta);
       camera.lookAt(_targetLookAt);
 
       renderer.render(scene, camera);
@@ -621,13 +779,11 @@ export const Biometric3DViewer: React.FC<Biometric3DViewerProps> = ({
 
     return () => {
       cancelAnimationFrame(animationFrameId);
-      dom.removeEventListener('click', handleCanvasClick);
-      dom.removeEventListener('mousedown', handleMouseDown);
-      window.removeEventListener('mousemove', handleMouseMove);
-      window.removeEventListener('mouseup', handleMouseUp);
+      dom.removeEventListener('mousedown', handlePointerDown);
+      window.removeEventListener('mousemove', handlePointerMove);
+      window.removeEventListener('mouseup', handlePointerUp);
       window.removeEventListener('resize', handleResize);
 
-      // Clean disposals
       humanBodyGroup.traverse((obj) => {
         if (obj instanceof THREE.Mesh) {
           obj.geometry.dispose();
@@ -650,159 +806,300 @@ export const Biometric3DViewer: React.FC<Biometric3DViewerProps> = ({
     };
   }, [theme]);
 
-  // Handle camera presets
+  // Camera presets
   useEffect(() => {
     if (cameraPreset === 'full') {
       _targetCameraPos.set(0, 1.25, 3.6);
       _targetLookAt.set(0, 1.0, 0);
     } else if (cameraPreset === 'spine') {
       _targetCameraPos.set(0, 1.15, -2.2);
-      _targetLookAt.set(0, 1.1, 0);
+      _targetLookAt.set(0, 1.05, 0);
     } else if (cameraPreset === 'chest') {
-      _targetCameraPos.set(0, 1.25, 1.8);
+      _targetCameraPos.set(0, 1.25, 1.85);
       _targetLookAt.set(0, 1.22, 0);
     } else if (cameraPreset === 'head') {
-      _targetCameraPos.set(0, 1.68, 1.4);
+      _targetCameraPos.set(0, 1.72, 1.35);
       _targetLookAt.set(0, 1.66, 0);
     }
   }, [cameraPreset]);
 
-  // Active pain detail card for the first reported pain or clicked body part
-  const activePainKey = painAreas[0] || (selectedBodyPart ? selectedBodyPart.replace(/_/g, ' ') : null);
-  const activeMitigation = activePainKey
-    ? Object.entries(PAIN_MITIGATION_DATABASE).find(([k]) =>
-        new RegExp(k.replace(/\s*\/\s*/g, '|'), 'i').test(activePainKey)
-      )?.[1]
+  // Determine displayed anatomical inspection region (clicked part OR auto-matched reported pain)
+  const selectedRegion: AnatomicalRegionInfo | null = selectedRegionId
+    ? ANATOMICAL_REGIONS.find((r) => r.id === selectedRegionId) || null
+    : painAreas.length > 0
+    ? ANATOMICAL_REGIONS.find((r) => r.painAreaMatch.test(painAreas[0])) || null
     : null;
 
-  return (
-    <div
-      className={`relative w-full ${
-        heightClassName || 'h-[480px] lg:h-[540px]'
-      } bg-slate-950 rounded-2xl overflow-hidden border border-slate-800 shadow-2xl flex flex-col justify-between ${
-        className || ''
-      }`}
-    >
-      <div ref={mountRef} className="absolute inset-0 cursor-grab active:cursor-grabbing" />
+  const isRegionInPain = selectedRegion
+    ? painAreas.some((area) => selectedRegion.painAreaMatch.test(area))
+    : false;
 
-      {/* Top Overlay Header */}
-      <div className="relative z-10 flex items-center justify-between p-4 pointer-events-none">
-        <div className="flex items-center gap-2">
-          <div className="px-3 py-1.5 rounded-xl bg-slate-900/90 border border-slate-700/80 text-xs font-mono text-cyan-400 flex items-center gap-2 shadow-lg backdrop-blur-md">
-            <span className="w-2 h-2 rounded-full bg-cyan-400 animate-pulse" />
-            <span className="font-semibold tracking-wide">
-              {title || '3D ANATOMICAL HOLOGRAM MANNEQUIN'}
-            </span>
-          </div>
-          {astronautName && (
-            <div className="px-2.5 py-1.5 rounded-xl bg-slate-900/80 border border-slate-800 text-[11px] font-mono text-slate-300">
-              CREW: {astronautName}
+  // Dynamic live status evaluation for the selected region
+  const getRegionLiveStatus = (region: AnatomicalRegionInfo): { label: string; colorClass: string } => {
+    if (painAreas.some((a) => region.painAreaMatch.test(a))) {
+      return {
+        label: 'PAIN HAZARD REPORTED',
+        colorClass: 'bg-rose-950 border-rose-600 text-rose-300',
+      };
+    }
+    if (region.id === 'heart_cardio' && (heartRate > 100 || heartRate < 50)) {
+      return {
+        label: 'ELEVATED CARDIAC STRAIN',
+        colorClass: 'bg-amber-950 border-amber-600 text-amber-300',
+      };
+    }
+    if (region.id === 'lungs_respiratory' && spo2 < 94) {
+      return {
+        label: 'HYPOXIA / SPO2 ALERT',
+        colorClass: 'bg-rose-950 border-rose-600 text-rose-300',
+      };
+    }
+    if (radiationRate > 50) {
+      return {
+        label: 'SPE RADIATION EXPOSURE',
+        colorClass: 'bg-amber-950 border-amber-600 text-amber-300',
+      };
+    }
+    return {
+      label: 'NOMINAL FUNCTION',
+      colorClass: 'bg-emerald-950 border-emerald-600 text-emerald-300',
+    };
+  };
+
+  return (
+    <div className="space-y-3">
+      {/* Main 3D Viewport Container */}
+      <div
+        className={`relative w-full ${
+          heightClassName || 'h-[480px] lg:h-[540px]'
+        } bg-slate-950 rounded-2xl overflow-hidden border border-slate-800 shadow-2xl flex flex-col justify-between ${
+          className || ''
+        }`}
+      >
+        <div
+          ref={mountRef}
+          className={`absolute inset-0 ${
+            cursorPointer ? 'cursor-pointer' : 'cursor-grab active:cursor-grabbing'
+          }`}
+        />
+
+        {/* Top Overlay Header (Solid/Semi-opaque without backdrop-blur per WebGL perf guidelines) */}
+        <div className="relative z-10 flex flex-wrap items-center justify-between gap-2 p-4 pointer-events-none">
+          <div className="flex items-center gap-2">
+            <div className="px-3 py-1.5 rounded-xl bg-slate-900/95 border border-slate-700 text-xs font-mono text-cyan-400 flex items-center gap-2 shadow-lg">
+              <Crosshair className="w-3.5 h-3.5 text-cyan-400" />
+              <span className="font-semibold tracking-wide">
+                {title || 'CLICKABLE 3D ANATOMICAL DIAGNOSTIC TWIN'}
+              </span>
             </div>
-          )}
+            {astronautName && (
+              <div className="px-2.5 py-1.5 rounded-xl bg-slate-900/95 border border-slate-800 text-[11px] font-mono text-slate-300">
+                CREW: {astronautName}
+              </div>
+            )}
+          </div>
+
+          <div className="flex items-center gap-2">
+            {hoveredRegionLabel && (
+              <div className="px-2.5 py-1 rounded-lg bg-slate-900/95 border border-cyan-600/80 text-[11px] font-mono text-cyan-300">
+                Target: {hoveredRegionLabel} (Click to Inspect)
+              </div>
+            )}
+
+            <div
+              className={`px-3 py-1.5 rounded-xl border text-xs font-mono font-bold tracking-wide ${
+                status === 'CRITICAL'
+                  ? 'bg-rose-950/95 border-rose-600 text-rose-300'
+                  : status === 'WARNING'
+                  ? 'bg-amber-950/95 border-amber-600 text-amber-300'
+                  : status === 'ADVISORY'
+                  ? 'bg-cyan-950/95 border-cyan-600 text-cyan-300'
+                  : 'bg-emerald-950/95 border-emerald-600 text-emerald-300'
+              }`}
+            >
+              STATUS: {status}
+            </div>
+          </div>
         </div>
 
-        {/* Global Triage Pill */}
-        <div
-          className={`px-3 py-1.5 rounded-xl border text-xs font-mono font-bold tracking-wide backdrop-blur-md ${
-            status === 'CRITICAL'
-              ? 'bg-rose-950/90 border-rose-600 text-rose-300'
-              : status === 'WARNING'
-              ? 'bg-amber-950/90 border-amber-600 text-amber-300'
-              : status === 'ADVISORY'
-              ? 'bg-cyan-950/90 border-cyan-600 text-cyan-300'
-              : 'bg-emerald-950/90 border-emerald-600 text-emerald-300'
-          }`}
-        >
-          STATUS: {status}
+        {/* Clickable Body Part Inspector Card (Renders for ANY clicked region OR pain spot) */}
+        {selectedRegion && (
+          <div className="relative z-10 mx-4 max-w-md pointer-events-auto my-auto">
+            <div
+              className={`p-4 rounded-xl bg-slate-900/95 border shadow-2xl space-y-2.5 text-xs ${
+                isRegionInPain ? 'border-rose-500' : 'border-cyan-600/80'
+              }`}
+            >
+              <div className="flex items-start justify-between gap-2 border-b border-slate-800 pb-2">
+                <div>
+                  <div className="flex items-center gap-1.5 text-[10px] font-mono uppercase text-slate-400">
+                    <Stethoscope className="w-3.5 h-3.5 text-cyan-400" />
+                    <span>{selectedRegion.system}</span>
+                  </div>
+                  <h4 className="text-sm font-bold text-slate-100 mt-0.5">{selectedRegion.label}</h4>
+                </div>
+                <div className="flex items-center gap-1.5 shrink-0">
+                  <span
+                    className={`px-2 py-0.5 rounded text-[10px] font-mono font-bold border ${
+                      getRegionLiveStatus(selectedRegion).colorClass
+                    }`}
+                  >
+                    {getRegionLiveStatus(selectedRegion).label}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => selectRegion(null)}
+                    className="p-1 rounded-md hover:bg-slate-800 text-slate-400 hover:text-white cursor-pointer"
+                    title="Close anatomical inspector"
+                  >
+                    <X className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+              </div>
+
+              <div className="space-y-2 max-h-52 overflow-y-auto pr-1">
+                <div>
+                  <span className="text-[10px] font-mono uppercase text-cyan-400 font-semibold block">
+                    Physiological Function:
+                  </span>
+                  <p className="text-[11px] text-slate-300 leading-relaxed">
+                    {selectedRegion.normalFunction}
+                  </p>
+                </div>
+
+                <div>
+                  <span className="text-[10px] font-mono uppercase text-amber-400 font-semibold block">
+                    Spaceflight Hazard Impact:
+                  </span>
+                  <p className="text-[11px] text-slate-300 leading-relaxed">
+                    {selectedRegion.spaceflightHazards}
+                  </p>
+                </div>
+
+                <div className="p-2.5 rounded-lg bg-slate-950 border border-slate-800 space-y-1">
+                  <span className="text-[10px] font-mono uppercase text-emerald-400 font-semibold block">
+                    NASA-STD-3001 Actionable Countermeasure:
+                  </span>
+                  <p className="text-[11px] text-slate-200 leading-relaxed">
+                    {selectedRegion.preventativeActions[0]}
+                  </p>
+                </div>
+              </div>
+
+              {onStartExamForRegion && (
+                <button
+                  type="button"
+                  onClick={() => onStartExamForRegion(selectedRegion.id)}
+                  className="w-full py-2 px-3 rounded-lg bg-cyan-600 hover:bg-cyan-500 text-white font-mono text-[11px] font-bold flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
+                >
+                  <ClipboardPlus className="w-3.5 h-3.5" />
+                  <span>Enter Exam Indicator for {selectedRegion.shortLabel}</span>
+                </button>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* Bottom Floating Control Dock */}
+        <div className="relative z-10 p-3 sm:p-4 flex flex-wrap items-center justify-between gap-2 text-xs pointer-events-auto">
+          {/* Layer Selector */}
+          <div className="flex items-center gap-1 p-1 rounded-xl bg-slate-900/95 border border-slate-800 font-mono text-[11px]">
+            <span className="text-slate-400 px-2 uppercase">Layer:</span>
+            {(['skin', 'skeleton', 'biometric'] as const).map((layer) => (
+              <button
+                key={layer}
+                type="button"
+                onClick={() => setViewLayer(layer)}
+                className={`px-2.5 py-1 rounded-lg transition-colors cursor-pointer whitespace-nowrap shrink-0 ${
+                  viewLayer === layer
+                    ? 'bg-cyan-600 text-white font-bold shadow'
+                    : 'text-slate-400 hover:text-white'
+                }`}
+              >
+                {layer.toUpperCase()}
+              </button>
+            ))}
+          </div>
+
+          {/* Focus Selector */}
+          <div className="flex items-center gap-1 p-1 rounded-xl bg-slate-900/95 border border-slate-800 font-mono text-[11px]">
+            <span className="text-slate-400 px-2 uppercase">Focus:</span>
+            {(['full', 'spine', 'chest', 'head'] as const).map((preset) => (
+              <button
+                key={preset}
+                type="button"
+                onClick={() => setCameraPreset(preset)}
+                className={`px-2.5 py-1 rounded-lg transition-colors cursor-pointer whitespace-nowrap shrink-0 ${
+                  cameraPreset === preset
+                    ? 'bg-indigo-600 text-white font-bold shadow'
+                    : 'text-slate-400 hover:text-white'
+                }`}
+              >
+                {preset.toUpperCase()}
+              </button>
+            ))}
+          </div>
+
+          {/* Turntable Rotation Switch */}
+          <button
+            type="button"
+            onClick={() => setIsRotating(!isRotating)}
+            className={`px-3 py-1.5 rounded-xl font-mono text-[11px] font-semibold border transition-colors cursor-pointer whitespace-nowrap shrink-0 ${
+              isRotating
+                ? 'bg-emerald-950/95 border-emerald-600 text-emerald-300'
+                : 'bg-slate-900/95 border-slate-700 text-slate-400 hover:text-white'
+            }`}
+          >
+            {isRotating ? 'ROTATE: ON' : 'ROTATE: PAUSED'}
+          </button>
         </div>
       </div>
 
-      {/* Floating Dynamic Pain Info Card / AI Mitigation Overlay */}
-      {painAreas.length > 0 && activeMitigation && (
-        <div className="relative z-10 mx-4 max-w-sm pointer-events-auto">
-          <div className="p-3.5 rounded-xl bg-slate-900/95 border border-rose-600/80 shadow-2xl backdrop-blur-md space-y-2 text-xs">
-            <div className="flex items-center justify-between border-b border-rose-900/60 pb-2">
-              <div className="flex items-center gap-2 text-rose-400 font-bold font-mono">
-                <AlertCircle className="w-4 h-4 text-rose-400 animate-pulse" />
-                <span>RED HAZARD SPOT: {painAreas.join(', ')}</span>
-              </div>
-              <span className="px-1.5 py-0.5 rounded text-[10px] font-mono bg-rose-950 border border-rose-700 text-rose-300 font-bold">
-                {activeMitigation.priority}
-              </span>
-            </div>
-
-            <div>
-              <span className="text-[11px] font-semibold text-slate-200 block">
-                {activeMitigation.title}
-              </span>
-              <p className="text-[11px] text-slate-400 leading-relaxed mt-0.5">
-                {activeMitigation.clinicalMechanism}
-              </p>
-            </div>
-
-            <div className="p-2.5 rounded-lg bg-rose-950/50 border border-rose-800/60 text-slate-200 text-[11px] leading-relaxed">
-              <span className="text-cyan-300 font-semibold flex items-center gap-1 font-mono text-[10px] uppercase mb-0.5">
-                <Sparkles className="w-3 h-3 text-cyan-400" />
-                AI Mitigation Protocol:
-              </span>
-              {activeMitigation.aiMitigation}
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Bottom Floating Control Bar */}
-      <div className="relative z-10 p-4 flex flex-wrap items-center justify-between gap-3 text-xs pointer-events-auto">
-        {/* Layer Selector */}
-        <div className="flex items-center gap-1.5 p-1 rounded-xl bg-slate-900/90 border border-slate-800 backdrop-blur-md font-mono text-[11px]">
-          <span className="text-slate-400 px-2 uppercase">Layer:</span>
-          {(['skin', 'skeleton', 'biometric'] as const).map((layer) => (
+      {/* Clickable Body Part Quick-Select Strip (Accessible Keyboard/Mouse Fallback + Visual Map) */}
+      <div className="bg-slate-900/80 border border-slate-800 rounded-xl p-3">
+        <div className="flex items-center justify-between mb-2">
+          <span className="text-[11px] font-mono text-slate-400 uppercase tracking-wider">
+            Click any region on the 3D body or select below to inspect function &amp; status:
+          </span>
+          {selectedRegion && (
             <button
-              key={layer}
               type="button"
-              onClick={() => setViewLayer(layer)}
-              className={`px-2.5 py-1 rounded-lg transition-colors cursor-pointer ${
-                viewLayer === layer
-                  ? 'bg-cyan-600 text-white font-bold shadow'
-                  : 'text-slate-400 hover:text-white'
-              }`}
+              onClick={() => selectRegion(null)}
+              className="text-[11px] font-mono text-cyan-400 hover:text-cyan-300 cursor-pointer"
             >
-              {layer.toUpperCase()}
+              Reset View
             </button>
-          ))}
+          )}
         </div>
-
-        {/* Focus Selector */}
-        <div className="flex items-center gap-1.5 p-1 rounded-xl bg-slate-900/90 border border-slate-800 backdrop-blur-md font-mono text-[11px]">
-          <span className="text-slate-400 px-2 uppercase">Focus:</span>
-          {(['full', 'spine', 'chest', 'head'] as const).map((preset) => (
-            <button
-              key={preset}
-              type="button"
-              onClick={() => setCameraPreset(preset)}
-              className={`px-2.5 py-1 rounded-lg transition-colors cursor-pointer ${
-                cameraPreset === preset
-                  ? 'bg-indigo-600 text-white font-bold shadow'
-                  : 'text-slate-400 hover:text-white'
-              }`}
-            >
-              {preset.toUpperCase()}
-            </button>
-          ))}
+        <div className="flex flex-wrap gap-1.5">
+          {ANATOMICAL_REGIONS.map((reg) => {
+            const isSelected = selectedRegion?.id === reg.id;
+            const hasPain = painAreas.some((a) => reg.painAreaMatch.test(a));
+            return (
+              <button
+                key={reg.id}
+                type="button"
+                onClick={() => selectRegion(isSelected ? null : reg.id)}
+                className={`px-2.5 py-1.5 rounded-lg text-[11px] font-mono transition-colors cursor-pointer flex items-center gap-1.5 border whitespace-nowrap shrink-0 ${
+                  isSelected
+                    ? 'bg-amber-950/90 border-amber-500 text-amber-200 font-bold'
+                    : hasPain
+                    ? 'bg-rose-950/80 border-rose-600/80 text-rose-300 hover:border-rose-400'
+                    : 'bg-slate-950 border-slate-800 text-slate-300 hover:border-cyan-600/70 hover:text-cyan-300'
+                }`}
+              >
+                {hasPain ? (
+                  <AlertCircle className="w-3 h-3 text-rose-400" />
+                ) : isSelected ? (
+                  <Activity className="w-3 h-3 text-amber-400" />
+                ) : (
+                  <CheckCircle2 className="w-3 h-3 text-emerald-500" />
+                )}
+                <span>{reg.shortLabel}</span>
+              </button>
+            );
+          })}
         </div>
-
-        {/* Turntable Rotation Switch */}
-        <button
-          type="button"
-          onClick={() => setIsRotating(!isRotating)}
-          className={`px-3 py-1.5 rounded-xl font-mono text-[11px] font-semibold border transition-colors cursor-pointer backdrop-blur-md ${
-            isRotating
-              ? 'bg-emerald-950/90 border-emerald-600 text-emerald-300'
-              : 'bg-slate-900/90 border-slate-700 text-slate-400 hover:text-white'
-          }`}
-        >
-          {isRotating ? 'ROTATE: ON' : 'ROTATE: PAUSED'}
-        </button>
       </div>
     </div>
   );

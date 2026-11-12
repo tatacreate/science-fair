@@ -7,13 +7,13 @@ import {
   Smile,
   HeartPulse,
   Activity,
-  Sparkles,
   X,
   Target,
   AlertCircle,
   CheckCircle2,
   Send,
   Radio,
+  FileCheck,
 } from 'lucide-react';
 
 interface DailySelfCheckinModalProps {
@@ -65,9 +65,9 @@ export const DailySelfCheckinModal: React.FC<DailySelfCheckinModalProps> = ({
   ]);
   const [customHabitStruggling, setCustomHabitStruggling] = useState('');
 
-  // Submission & AI analysis state
+  // Submission & Offline Clinical Guidance state
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [aiFeedback, setAiFeedback] = useState<string | null>(null);
+  const [flightGuidance, setFlightGuidance] = useState<string | null>(null);
 
   if (!isOpen) return null;
 
@@ -87,6 +87,58 @@ export const DailySelfCheckinModal: React.FC<DailySelfCheckinModalProps> = ({
     setHabitsStrugglingWith((prev) =>
       prev.includes(h) ? prev.filter((item) => item !== h) : [...prev, h]
     );
+  };
+
+  // Deterministic 100% Offline NASA-STD-3001 Protocol Generator (No AI, No Internet)
+  const generateOfflineFlightGuidance = (
+    data: DailyCheckin,
+    currentTelemetry: TelemetryState,
+    currentCabin: CabinEnvironment
+  ): string => {
+    const protocols: string[] = [];
+
+    // 1. Sleep & Circadian Assessment
+    if (data.sleepQuality < 6 || data.sleepHours < 6) {
+      protocols.push(
+        `• Circadian & Sleep Protocol: Sleep score (${data.sleepQuality}/10, ${data.sleepHours}h) indicates microgravity sleep disruption. Verify cabin sleep station airflow vent tether to avoid local CO₂ pooling pockets (>2.5 mmHg). Use polarized eye mask and acoustic noise-canceling ear protection for next rest cycle.`
+      );
+    } else {
+      protocols.push(
+        `• Sleep & Restorative Status: Sleep index (${data.sleepQuality}/10, ${data.sleepHours}h) meets NASA HRP nominal physiological recovery threshold. Continue regular sleep compartment schedule.`
+      );
+    }
+
+    // 2. Pain & Musculoskeletal Guidance
+    if (data.hasPain && data.painAreas.length > 0) {
+      const areasStr = data.painAreas.join(', ');
+      let specificCare = 'Perform 15 minutes of neutral body posture (NBP) floating decompression.';
+      if (data.painAreas.some((a) => a.toLowerCase().includes('spine') || a.toLowerCase().includes('lumbar'))) {
+        specificCare = 'Perform 15 minutes of fetal knees-to-chest spinal stretches before daily ARED session to alleviate microgravity disc expansion and anterior vertebral tension.';
+      } else if (data.painAreas.some((a) => a.toLowerCase().includes('head'))) {
+        specificCare = 'Check local cabin CO₂ levels (current: ' + currentCabin.ambientCO2 + ' mmHg). Drink 350ml chilled electrolyte solution to mitigate cephalad fluid shift venous engorgement.';
+      }
+      protocols.push(
+        `• Musculoskeletal Mitigation (${areasStr} - Severity ${data.painSeverity}/10): ${specificCare} If discomfort persists >4 hours, consider OTC oral acetaminophen (650mg) with 250ml water.`
+      );
+    } else {
+      protocols.push(
+        `• Musculoskeletal Status: Zero active pain reported. Musculoskeletal integrity nominal for upcoming mission operations.`
+      );
+    }
+
+    // 3. Hydration & Countermeasure Habits
+    if (data.habitsToImprove.some((h) => h.toLowerCase().includes('hydration'))) {
+      protocols.push(
+        `• Fluid Electrolyte Countermeasure: Prioritize 2.5L isotonic fluid balance over the next 16 hours to counteract microgravity plasma volume reduction.`
+      );
+    }
+
+    // 4. Ground Sync Log
+    protocols.push(
+      `• NASA Ground Log Status: Telemetry baseline (HR: ${currentTelemetry.heartRate} bpm, SpO₂: ${currentTelemetry.spo2}%, Core Temp: ${currentTelemetry.coreTemp}°C) logged in local spacecraft memory. Packet queued for next Deep Space Network telemetry downlink.`
+    );
+
+    return protocols.join('\n\n');
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -113,30 +165,14 @@ export const DailySelfCheckinModal: React.FC<DailySelfCheckinModalProps> = ({
       createdAt: new Date().toLocaleTimeString(),
     };
 
-    try {
-      // 1. Get Autonomous Onboard AI Medical Guidance
-      const res = await fetch('/api/gemini/analyze-checkin', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          checkin: checkinData,
-          telemetry,
-          cabin,
-        }),
-      });
-      const resData = await res.json();
-      checkinData.aiFeedback = resData.feedback || 'Self-check analyzed. Guidance recorded.';
-      setAiFeedback(checkinData.aiFeedback || 'Self-check analyzed. Guidance recorded.');
+    // Generate offline deterministic flight surgeon guidance instantly (100% offline, zero internet/AI)
+    const guidance = generateOfflineFlightGuidance(checkinData, telemetry, cabin);
+    checkinData.aiFeedback = guidance; // Stored in field for backwards compatibility
+    setFlightGuidance(guidance);
 
-      // 2. Persist to Firestore or local state
-      await onSaveCheckin(checkinData);
-    } catch (err: any) {
-      console.error('Error submitting checkin:', err);
-      setAiFeedback('Onboard AI analyzed your submission. Recommendation: Hydrate with 500ml electrolyte solution and perform 15 minutes of neutral body posture decompression.');
-      await onSaveCheckin(checkinData);
-    } finally {
-      setIsSubmitting(false);
-    }
+    // Save to local storage / Firestore
+    await onSaveCheckin(checkinData);
+    setIsSubmitting(false);
   };
 
   const standardPainOptions = [
@@ -183,11 +219,11 @@ export const DailySelfCheckinModal: React.FC<DailySelfCheckinModalProps> = ({
                   Daily Autonomous Astronaut Medical Self-Check
                 </h3>
                 <span className="px-2 py-0.5 rounded bg-cyan-950 border border-cyan-700 text-[10px] font-mono text-cyan-300 font-bold">
-                  AUTONOMOUS
+                  OFFLINE CAPSULE MODE
                 </span>
               </div>
               <p className="text-xs text-slate-400">
-                You have no doctors in space. This tool helps you independently monitor and care for your body and mind.
+                Operates 100% on board with no internet or cloud connectivity. NASA flight protocols are applied locally.
               </p>
             </div>
           </div>
@@ -203,28 +239,28 @@ export const DailySelfCheckinModal: React.FC<DailySelfCheckinModalProps> = ({
 
         {/* Content */}
         <div className="p-5 sm:p-6 overflow-y-auto space-y-6 text-slate-200">
-          {aiFeedback ? (
-            /* Post-Submission AI Autonomous Feedback */
+          {flightGuidance ? (
+            /* Post-Submission Offline Autonomous Feedback */
             <div className="space-y-4">
               <div className="p-4 rounded-xl bg-emerald-950/60 border border-emerald-800 flex items-start gap-3">
                 <CheckCircle2 className="w-6 h-6 text-emerald-400 flex-shrink-0 mt-0.5" />
                 <div>
                   <h4 className="text-sm font-bold text-emerald-200">
-                    Daily Self-Check Recorded &amp; Analyzed
+                    Daily Self-Check Recorded Locally
                   </h4>
                   <p className="text-xs text-emerald-300/90 mt-0.5">
-                    Your check-in has been stored on board. An encrypted packet is queued for NASA flight surgeons on Earth (14m 28s latency).
+                    Your check-in has been logged in spacecraft non-volatile memory. An encrypted packet is queued for NASA flight surgeons on Earth.
                   </p>
                 </div>
               </div>
 
               <div className="p-4 rounded-xl bg-slate-950 border border-slate-800 space-y-3">
                 <div className="flex items-center gap-2 text-cyan-400 text-xs font-mono font-bold uppercase tracking-wider">
-                  <Sparkles className="w-4 h-4 text-cyan-400" />
-                  Autonomous Onboard Flight Surgeon Guidance:
+                  <FileCheck className="w-4 h-4 text-cyan-400" />
+                  Onboard Flight Surgeon Guidance (NASA-STD-3001 Protocol):
                 </div>
                 <div className="text-xs sm:text-sm text-slate-200 leading-relaxed whitespace-pre-wrap font-sans bg-slate-900/60 p-4 rounded-lg border border-slate-800/80">
-                  {aiFeedback}
+                  {flightGuidance}
                 </div>
               </div>
 
@@ -232,7 +268,7 @@ export const DailySelfCheckinModal: React.FC<DailySelfCheckinModalProps> = ({
                 <button
                   type="button"
                   onClick={() => {
-                    setAiFeedback(null);
+                    setFlightGuidance(null);
                     onClose();
                   }}
                   className="px-5 py-2 rounded-xl bg-cyan-600 hover:bg-cyan-500 text-white text-xs font-bold font-mono transition-colors cursor-pointer"
@@ -524,7 +560,7 @@ export const DailySelfCheckinModal: React.FC<DailySelfCheckinModalProps> = ({
               <div className="flex items-center justify-between pt-2 border-t border-slate-800">
                 <div className="flex items-center gap-2 text-xs font-mono text-slate-400">
                   <Radio className="w-3.5 h-3.5 text-amber-400 animate-pulse" />
-                  <span>EARTH SYNC QUEUE ON SUBMIT</span>
+                  <span>LOCAL LOG &bull; STORED IN MEMORY</span>
                 </div>
 
                 <button
@@ -533,7 +569,7 @@ export const DailySelfCheckinModal: React.FC<DailySelfCheckinModalProps> = ({
                   className="px-6 py-2.5 rounded-xl bg-gradient-to-r from-cyan-600 to-indigo-600 hover:from-cyan-500 hover:to-indigo-500 text-white text-xs font-bold font-mono flex items-center gap-2 shadow-lg shadow-cyan-950 transition-all cursor-pointer disabled:opacity-50"
                 >
                   <Send className="w-4 h-4" />
-                  <span>{isSubmitting ? 'Analyzing Biometrics...' : 'Submit Daily Self-Check'}</span>
+                  <span>{isSubmitting ? 'Recording In Memory...' : 'Submit Daily Self-Check'}</span>
                 </button>
               </div>
             </form>
