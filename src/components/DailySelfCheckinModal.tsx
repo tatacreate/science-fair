@@ -1,6 +1,9 @@
 import React, { useState } from 'react';
 import { User } from 'firebase/auth';
 import { DailyCheckin, TelemetryState, CabinEnvironment } from '../types/heliomed';
+import { computeSmartHazardTags } from '../data/nasaFiveHazards';
+import { evaluateSpecificNasaRisks } from '../data/nasaHrpRisks';
+import { SmartRiskPills } from './NasaRiskPillsAndModal';
 import {
   ClipboardCheck,
   Moon,
@@ -14,6 +17,7 @@ import {
   Send,
   Radio,
   FileCheck,
+  Compass,
 } from 'lucide-react';
 
 interface DailySelfCheckinModalProps {
@@ -24,6 +28,8 @@ interface DailySelfCheckinModalProps {
   telemetry: TelemetryState;
   cabin: CabinEnvironment;
   astronautName: string;
+  evaMode?: boolean;
+  onToggleEvaMode?: (val: boolean) => void;
 }
 
 export const DailySelfCheckinModal: React.FC<DailySelfCheckinModalProps> = ({
@@ -34,7 +40,16 @@ export const DailySelfCheckinModal: React.FC<DailySelfCheckinModalProps> = ({
   telemetry,
   cabin,
   astronautName,
+  evaMode: controlledEvaMode,
+  onToggleEvaMode,
 }) => {
+  const [localEvaMode, setLocalEvaMode] = useState<boolean>(false);
+  const evaMode = controlledEvaMode !== undefined ? controlledEvaMode : localEvaMode;
+  const setEvaMode = (val: boolean) => {
+    setLocalEvaMode(val);
+    onToggleEvaMode?.(val);
+  };
+
   // 1. Sleep on scale of 1 to 10
   const [sleepQuality, setSleepQuality] = useState<number>(7);
   const [sleepHours, setSleepHours] = useState<number>(6.5);
@@ -89,53 +104,83 @@ export const DailySelfCheckinModal: React.FC<DailySelfCheckinModalProps> = ({
     );
   };
 
-  // Deterministic 100% Offline NASA-STD-3001 Protocol Generator (No AI, No Internet)
+  // Deterministic 100% Offline NASA-STD-3001 + NASA HRP Risks Generator (No AI, No Internet)
   const generateOfflineFlightGuidance = (
     data: DailyCheckin,
     currentTelemetry: TelemetryState,
     currentCabin: CabinEnvironment
   ): string => {
     const protocols: string[] = [];
+    const smartTags = computeSmartHazardTags({
+      painAreas: data.painAreas,
+      sleepQuality: data.sleepQuality,
+      sleepHours: data.sleepHours,
+      mentalHealth: data.mentalHealth,
+      ambientCO2: currentCabin.ambientCO2,
+      spo2: currentTelemetry.spo2,
+      radiationRate: currentTelemetry.radiationDoseRate,
+    });
+
+    const { activeRisks } = evaluateSpecificNasaRisks({
+      heartRate: currentTelemetry.heartRate,
+      spo2: currentTelemetry.spo2,
+      radiationRate: currentTelemetry.radiationDoseRate,
+      ambientCO2: currentCabin.ambientCO2,
+      ambientPressure: currentCabin.ambientPressure,
+      painAreas: data.painAreas,
+      sleepQuality: data.sleepQuality,
+      sleepHours: data.sleepHours,
+      mentalHealth: data.mentalHealth,
+      overallFeeling: data.overallFeeling,
+      habitsStrugglingWith: data.habitsStrugglingWith,
+      evaMode: data.evaMode,
+    });
+
+    if (activeRisks.length > 0) {
+      protocols.push(
+        `• NASA HRP Specific Risks Flagged: ${activeRisks.map((r) => r.spec.shortBadge).join(' · ')}`
+      );
+      activeRisks.slice(0, 4).forEach((r) => {
+        protocols.push(`  → ${r.spec.title}: ${r.spec.countermeasure}`);
+      });
+    }
+
+    if (smartTags.length > 0) {
+      const tagHeaders = smartTags.map((t) => `[${t.tagLabel}]`).join(' · ');
+      protocols.push(`• NASA 5 Hazards Match: ${tagHeaders}`);
+    }
 
     // 1. Sleep & Circadian Assessment
     if (data.sleepQuality < 6 || data.sleepHours < 6) {
       protocols.push(
-        `• Circadian & Sleep Protocol: Sleep score (${data.sleepQuality}/10, ${data.sleepHours}h) indicates microgravity sleep disruption. Verify cabin sleep station airflow vent tether to avoid local CO₂ pooling pockets (>2.5 mmHg). Use polarized eye mask and acoustic noise-canceling ear protection for next rest cycle.`
+        `• [Isolation & Confinement] Circadian Protocol: Sleep score (${data.sleepQuality}/10, ${data.sleepHours}h) indicates sleep disruption. Start circadian light therapy and check sleep-station airflow.`
       );
     } else {
       protocols.push(
-        `• Sleep & Restorative Status: Sleep index (${data.sleepQuality}/10, ${data.sleepHours}h) meets NASA HRP nominal physiological recovery threshold. Continue regular sleep compartment schedule.`
+        `• Sleep & Restorative Status: Sleep index (${data.sleepQuality}/10, ${data.sleepHours}h) meets NASA HRP recovery guidelines.`
       );
     }
 
     // 2. Pain & Musculoskeletal Guidance
     if (data.hasPain && data.painAreas.length > 0) {
       const areasStr = data.painAreas.join(', ');
-      let specificCare = 'Perform 15 minutes of neutral body posture (NBP) floating decompression.';
-      if (data.painAreas.some((a) => a.toLowerCase().includes('spine') || a.toLowerCase().includes('lumbar'))) {
-        specificCare = 'Perform 15 minutes of fetal knees-to-chest spinal stretches before daily ARED session to alleviate microgravity disc expansion and anterior vertebral tension.';
-      } else if (data.painAreas.some((a) => a.toLowerCase().includes('head'))) {
-        specificCare = 'Check local cabin CO₂ levels (current: ' + currentCabin.ambientCO2 + ' mmHg). Drink 350ml chilled electrolyte solution to mitigate cephalad fluid shift venous engorgement.';
+      let specificCare = 'Perform 15 minutes of gentle floating stretches and resistance loading.';
+      if (data.painAreas.some((a) => /spine|lumbar|leg|joint/i.test(a))) {
+        specificCare =
+          '[Gravity Fields] Perform 15 minutes of knees-to-chest decompression stretches and complete daily resistance exercise.';
+      } else if (data.painAreas.some((a) => /head/i.test(a))) {
+        specificCare = `[Hostile/Closed Environments] Check cabin CO₂ (${currentCabin.ambientCO2} mmHg) and inspect air scrubbers. Drink 350 mL electrolyte water.`;
       }
       protocols.push(
-        `• Musculoskeletal Mitigation (${areasStr} - Severity ${data.painSeverity}/10): ${specificCare} If discomfort persists >4 hours, consider OTC oral acetaminophen (650mg) with 250ml water.`
+        `• Symptom Guidance (${areasStr} · ${data.painSeverity}/10): ${specificCare}`
       );
     } else {
-      protocols.push(
-        `• Musculoskeletal Status: Zero active pain reported. Musculoskeletal integrity nominal for upcoming mission operations.`
-      );
+      protocols.push(`• Musculoskeletal Status: Zero pain reported today.`);
     }
 
-    // 3. Hydration & Countermeasure Habits
-    if (data.habitsToImprove.some((h) => h.toLowerCase().includes('hydration'))) {
-      protocols.push(
-        `• Fluid Electrolyte Countermeasure: Prioritize 2.5L isotonic fluid balance over the next 16 hours to counteract microgravity plasma volume reduction.`
-      );
-    }
-
-    // 4. Ground Sync Log
+    // 3. Ground Sync Log
     protocols.push(
-      `• NASA Ground Log Status: Telemetry baseline (HR: ${currentTelemetry.heartRate} bpm, SpO₂: ${currentTelemetry.spo2}%, Core Temp: ${currentTelemetry.coreTemp}°C) logged in local spacecraft memory. Packet queued for next Deep Space Network telemetry downlink.`
+      `• [Distance from Earth] Offline Log Ready: HR ${currentTelemetry.heartRate} bpm · SpO₂ ${currentTelemetry.spo2}% stored in capsule memory and queued for Flight Surgeons.`
     );
 
     return protocols.join('\n\n');
@@ -162,6 +207,7 @@ export const DailySelfCheckinModal: React.FC<DailySelfCheckinModalProps> = ({
       painNotes: hasPain ? painNotes : '',
       habitsToImprove,
       habitsStrugglingWith,
+      evaMode,
       createdAt: new Date().toLocaleTimeString(),
     };
 
@@ -178,10 +224,12 @@ export const DailySelfCheckinModal: React.FC<DailySelfCheckinModalProps> = ({
   const standardPainOptions = [
     { label: 'Lower Back / Spine (Spinal Elongation)', value: 'Spine / Lumbar' },
     { label: 'Head / Forehead (Fluid shift / CO2)', value: 'Head' },
-    { label: 'Neck & Trapezius (Floating tension)', value: 'Neck' },
-    { label: 'Joints / Knees (ARED resistance)', value: 'Joints' },
-    { label: 'Shoulders (Treadmill harness chafing)', value: 'Shoulders' },
-    { label: 'Eyes (Eye strain / SANS blurriness)', value: 'Eyes' },
+    { label: 'Eyes (Vision blur / SANS pressure)', value: 'Eyes' },
+    { label: 'Inner Ear / Dizziness / Balance', value: 'Inner Ear / Dizziness' },
+    { label: 'Chest / Heart Rate Spike', value: 'Chest / Heart Rate Spike' },
+    { label: 'Joints / Knees (Bone & muscle load)', value: 'Joints' },
+    { label: 'Shoulders (Suit / harness strain)', value: 'Shoulders' },
+    { label: 'Skin Rash / Immune Fatigue', value: 'Skin Rash / Fatigue' },
   ];
 
   const standardHabitsImprove = [
@@ -196,11 +244,11 @@ export const DailySelfCheckinModal: React.FC<DailySelfCheckinModalProps> = ({
 
   const standardHabitsStruggling = [
     'Falling asleep in sleeping sack',
-    'Drinking enough fluids (diminished thirst)',
-    'Eating enough food (space appetite loss)',
-    'Treadmill bungee harness friction',
-    'Screen time & schedule rigidity',
-    'Ear fullness / sinus pressure',
+    'Low Hydration / Skipping Water',
+    'Low Nutrition / Appetite Loss',
+    'Crew Friction / Comm Tension',
+    'System Confusion / Tech Alert',
+    'Treadmill bungee harness chafing',
     'Missing family & sensory cues from Earth',
   ];
 
@@ -280,6 +328,32 @@ export const DailySelfCheckinModal: React.FC<DailySelfCheckinModalProps> = ({
           ) : (
             /* Interactive Self-Check Form */
             <form onSubmit={handleSubmit} className="space-y-6">
+              {/* Pre/Post-EVA Spacewalk Readiness Mode Toggle */}
+              <div className="p-3.5 rounded-xl bg-slate-950 border border-slate-800 flex flex-wrap items-center justify-between gap-3">
+                <div className="flex items-center gap-2.5 text-xs">
+                  <Compass className="w-4 h-4 text-amber-400 shrink-0" />
+                  <div>
+                    <span className="font-bold text-slate-100 block">
+                      Pre/Post-EVA (Spacewalk) Readiness Check
+                    </span>
+                    <span className="text-[11px] text-slate-400">
+                      Monitors Decompression Sickness (&quot;The Bends&quot;) &amp; Spacewalk Cognitive Fatigue
+                    </span>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setEvaMode(!evaMode)}
+                  className={`px-3.5 py-1.5 rounded-lg text-xs font-mono font-bold border transition cursor-pointer ${
+                    evaMode
+                      ? 'bg-amber-950 border-amber-500 text-amber-200'
+                      : 'bg-slate-900 border-slate-700 text-slate-300 hover:border-slate-500'
+                  }`}
+                >
+                  {evaMode ? 'EVA MODE: ACTIVE' : 'ENABLE EVA MODE'}
+                </button>
+              </div>
+
               {/* Question 1: Sleep */}
               <div className="p-4 rounded-xl bg-slate-950 border border-slate-800 space-y-3">
                 <div className="flex items-center justify-between">
@@ -336,8 +410,9 @@ export const DailySelfCheckinModal: React.FC<DailySelfCheckinModalProps> = ({
                     'High Morale',
                     'Mild Space Isolation',
                     'Sensory Fatigue',
-                    'Anxious / Restless',
-                    'Overwhelmed by Workload',
+                    'Anxious / High Stress',
+                    'Crew Friction / Comm Flag',
+                    'System Confusion / Tech Alert',
                   ].map((mood) => (
                     <button
                       key={mood}
@@ -556,17 +631,45 @@ export const DailySelfCheckinModal: React.FC<DailySelfCheckinModalProps> = ({
                 </div>
               </div>
 
+              {/* Live Smart NASA HRP Specific Risks Preview */}
+              {(() => {
+                const { activeRisks } = evaluateSpecificNasaRisks({
+                  heartRate: telemetry.heartRate,
+                  spo2: telemetry.spo2,
+                  radiationRate: telemetry.radiationDoseRate,
+                  ambientCO2: cabin.ambientCO2,
+                  ambientPressure: cabin.ambientPressure,
+                  painAreas: hasPain ? selectedPainAreas : [],
+                  sleepQuality,
+                  sleepHours,
+                  mentalHealth: `${mentalHealthTag} ${mentalHealthNotes}`,
+                  overallFeeling,
+                  habitsStrugglingWith,
+                  evaMode,
+                });
+                if (activeRisks.length === 0) return null;
+                return (
+                  <div className="p-3.5 rounded-xl bg-slate-950 border border-cyan-800/60">
+                    <SmartRiskPills
+                      compact
+                      title="Live NASA HRP Risks Flagged From This Check-In"
+                      risks={activeRisks}
+                    />
+                  </div>
+                );
+              })()}
+
               {/* Submit Button */}
               <div className="flex items-center justify-between pt-2 border-t border-slate-800">
                 <div className="flex items-center gap-2 text-xs font-mono text-slate-400">
-                  <Radio className="w-3.5 h-3.5 text-amber-400 animate-pulse" />
-                  <span>LOCAL LOG &bull; STORED IN MEMORY</span>
+                  <Radio className="w-3.5 h-3.5 text-amber-400" />
+                  <span>LOCAL LOG · OFFLINE SAFE</span>
                 </div>
 
                 <button
                   type="submit"
                   disabled={isSubmitting || !overallFeeling.trim()}
-                  className="px-6 py-2.5 rounded-xl bg-gradient-to-r from-cyan-600 to-indigo-600 hover:from-cyan-500 hover:to-indigo-500 text-white text-xs font-bold font-mono flex items-center gap-2 shadow-lg shadow-cyan-950 transition-all cursor-pointer disabled:opacity-50"
+                  className="px-6 py-2.5 rounded-xl bg-cyan-600 hover:bg-cyan-500 text-white text-xs font-bold font-mono flex items-center gap-2 transition-colors cursor-pointer disabled:opacity-50"
                 >
                   <Send className="w-4 h-4" />
                   <span>{isSubmitting ? 'Recording In Memory...' : 'Submit Daily Self-Check'}</span>

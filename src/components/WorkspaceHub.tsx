@@ -31,7 +31,6 @@ import {
 
 interface WorkspaceHubProps {
   user: User | null;
-  onSignInPrompt: () => void;
   astronautName: string;
   missionCode?: string;
   dailyCheckins?: DailyCheckin[];
@@ -39,7 +38,6 @@ interface WorkspaceHubProps {
 
 export const WorkspaceHub: React.FC<WorkspaceHubProps> = ({
   user,
-  onSignInPrompt,
   astronautName,
   missionCode = 'ARTEMIS-II',
   dailyCheckins = [],
@@ -319,15 +317,20 @@ export const WorkspaceHub: React.FC<WorkspaceHubProps> = ({
                     <span>Fill &amp; Submit to Earth Doctors</span>
                   </button>
 
-                  <a
-                    href={f.responderUri}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="px-3 py-1.5 rounded-lg bg-slate-900 hover:bg-slate-800 border border-slate-800 text-slate-300 text-xs font-mono transition flex items-center gap-1.5"
-                  >
-                    <span>Open in Google Forms</span>
-                    <ExternalLink className="w-3.5 h-3.5 text-slate-400" />
-                  </a>
+                  {f.responderUri &&
+                    !f.responderUri.includes('1FAIpQLS_') &&
+                    !f.responderUri.includes('Artemis-Readiness') &&
+                    !f.responderUri.includes('Se-Rad-Survey') && (
+                      <a
+                        href={f.responderUri}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="px-3 py-1.5 rounded-lg bg-slate-900 hover:bg-slate-800 border border-slate-800 text-slate-300 text-xs font-mono transition flex items-center gap-1.5"
+                      >
+                        <span>Open in Google Forms</span>
+                        <ExternalLink className="w-3.5 h-3.5 text-slate-400" />
+                      </a>
+                    )}
                 </div>
               </div>
             ))

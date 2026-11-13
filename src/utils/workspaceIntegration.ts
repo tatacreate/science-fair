@@ -27,7 +27,7 @@ export async function createAstronautCheckinForm(
 
   const formPayload = {
     info: {
-      title: `${title} - Orbitauts Medical Log`,
+      title: `${title} - Vitaluats Medical Log`,
       documentTitle: `${astronautName} Spaceflight Symptom Survey`,
     },
   };

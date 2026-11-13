@@ -1,22 +1,23 @@
 import React, { useState } from 'react';
 import {
   Database,
-  FlaskConical,
   Play,
   RotateCcw,
   CheckCircle2,
   AlertTriangle,
   ArrowRight,
   Microscope,
+  Eye,
 } from 'lucide-react';
 import { NASA_OSDR_DATASETS, OsdrStudyDataset } from '../data/osdrDatasets';
-import { CabinEnvironment, SimulationScenario, TelemetryState } from '../types/heliomed';
+import { CabinEnvironment, TelemetryState } from '../types/heliomed';
 import { HabitatEnvironmentId } from '../data/habitatEnvironments';
 
 interface OsdrBenchmarkPanelProps {
   activeScenarioId?: string;
   onApplyOsdrTestCase: (dataset: OsdrStudyDataset) => void;
   onResetOsdrTest: () => void;
+  onInspectInBody?: (dataset: OsdrStudyDataset) => void;
   liveTelemetry: TelemetryState;
   liveCabin: CabinEnvironment;
   onJumpToEnvironment: (envId: HabitatEnvironmentId) => void;
@@ -26,16 +27,26 @@ export const OsdrBenchmarkPanel: React.FC<OsdrBenchmarkPanelProps> = ({
   activeScenarioId,
   onApplyOsdrTestCase,
   onResetOsdrTest,
+  onInspectInBody,
   liveTelemetry,
   liveCabin,
   onJumpToEnvironment,
 }) => {
   const [selectedStudyId, setSelectedStudyId] = useState<string>(NASA_OSDR_DATASETS[0].studyId);
+  const [lastTriggeredMsg, setLastTriggeredMsg] = useState<string | null>(null);
 
   const selectedStudy =
     NASA_OSDR_DATASETS.find((d) => d.studyId === selectedStudyId) || NASA_OSDR_DATASETS[0];
 
   const isCurrentlyTestingSelected = activeScenarioId === selectedStudy.testScenario.id;
+
+  const triggerTest = (study: OsdrStudyDataset) => {
+    onJumpToEnvironment(study.environmentId);
+    onApplyOsdrTestCase(study);
+    setLastTriggeredMsg(
+      `${study.studyId} loaded: updated chart (${study.chartTargetIndicator?.toUpperCase() || 'vitals'}), live telemetry, and countermeasures.`
+    );
+  };
 
   // Map a live dashboard value where applicable so astronauts can compare themselves to real OSDR cohorts
   const getCrewLiveComparison = (indicatorName: string): string | null => {
@@ -50,6 +61,15 @@ export const OsdrBenchmarkPanel: React.FC<OsdrBenchmarkPanelProps> = ({
     if (lower.includes('co2')) return `${liveCabin.ambientCO2} mmHg`;
     if (lower.includes('pressure') && !lower.includes('eye') && !lower.includes('systolic'))
       return `${liveCabin.ambientPressure} kPa`;
+    if (lower.includes('glucose') && isCurrentlyTestingSelected && selectedStudy.studyId === 'OSD-511') {
+      return `${selectedStudy.chartSampleValue} mg/dL`;
+    }
+    if (lower.includes('optic nerve') && isCurrentlyTestingSelected && selectedStudy.studyId === 'OSD-484') {
+      return `${selectedStudy.chartSampleValue} mm`;
+    }
+    if (lower.includes('urine') && isCurrentlyTestingSelected && selectedStudy.studyId === 'OSD-102') {
+      return `${selectedStudy.chartSampleValue} SG`;
+    }
     return null;
   };
 
@@ -62,16 +82,11 @@ export const OsdrBenchmarkPanel: React.FC<OsdrBenchmarkPanelProps> = ({
             <Database className="w-5 h-5" />
           </div>
           <div>
-            <div className="flex flex-wrap items-center gap-2">
-              <h3 className="text-base sm:text-lg font-bold text-slate-100">
-                NASA Open Science Data Repository (OSDR) Flight Biology Testbench
-              </h3>
-              <span className="px-2 py-0.5 rounded bg-emerald-950 border border-emerald-700/60 text-emerald-300 text-[10px] font-mono font-bold">
-                EMBEDDED OFFLINE ARCHIVE
-              </span>
-            </div>
+            <h3 className="text-base sm:text-lg font-bold text-slate-100">
+              NASA OSDR Flight Biology Testbench (Offline)
+            </h3>
             <p className="text-xs text-slate-400 mt-1 max-w-2xl">
-              Compare your live readings against real NASA spaceflight biology studies (Earth baseline vs. In-Flight measurements) and test how HelioMed catches each real anomaly offline.
+              Compare your readings against NASA studies and run realistic spaceflight anomalies right here.
             </p>
           </div>
         </div>
@@ -80,30 +95,73 @@ export const OsdrBenchmarkPanel: React.FC<OsdrBenchmarkPanelProps> = ({
           {activeScenarioId?.startsWith('osdr-') && (
             <button
               type="button"
-              onClick={onResetOsdrTest}
+              onClick={() => {
+                onResetOsdrTest();
+                setLastTriggeredMsg(null);
+              }}
               className="px-3.5 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-200 font-mono text-xs flex items-center gap-1.5 cursor-pointer whitespace-nowrap shrink-0"
             >
               <RotateCcw className="w-3.5 h-3.5" />
-              <span>Restore Nominal Baseline</span>
+              <span>Restore Normal</span>
             </button>
           )}
           <button
             type="button"
-            onClick={() => {
-              onJumpToEnvironment(selectedStudy.environmentId);
-              onApplyOsdrTestCase(selectedStudy);
-            }}
+            onClick={() => triggerTest(selectedStudy)}
             className="px-4 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white font-mono text-xs font-bold flex items-center gap-2 cursor-pointer whitespace-nowrap shrink-0"
           >
             <Play className="w-3.5 h-3.5" />
             <span>
               {isCurrentlyTestingSelected
-                ? `Re-Inject ${selectedStudy.studyId} Case`
-                : `Test ${selectedStudy.studyId} Case in Dashboard`}
+                ? `Re-Run ${selectedStudy.studyId} Test`
+                : `Run ${selectedStudy.studyId} Test`}
             </span>
           </button>
         </div>
       </div>
+
+      {/* Live Feedback Banner when an OSDR test is running */}
+      {isCurrentlyTestingSelected && (
+        <div className="p-4 rounded-xl bg-amber-950/50 border border-amber-600/80 space-y-3">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+            <div className="flex items-start gap-2.5">
+              <AlertTriangle className="w-5 h-5 text-amber-400 shrink-0 mt-0.5" />
+              <div>
+                <h4 className="text-sm font-bold text-amber-200">
+                  Active Simulation: {selectedStudy.testScenario.name}
+                </h4>
+                <p className="text-xs text-slate-200 mt-0.5">
+                  {lastTriggeredMsg || selectedStudy.testScenario.clinicalSigns}
+                </p>
+              </div>
+            </div>
+
+            {onInspectInBody && (
+              <button
+                type="button"
+                onClick={() => onInspectInBody(selectedStudy)}
+                className="px-3.5 py-2 rounded-lg bg-cyan-600 hover:bg-cyan-500 text-white font-mono text-xs font-bold flex items-center gap-1.5 cursor-pointer whitespace-nowrap shrink-0"
+              >
+                <Eye className="w-3.5 h-3.5" />
+                <span>Inspect on 3D Body</span>
+                <ArrowRight className="w-3.5 h-3.5" />
+              </button>
+            )}
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 text-xs">
+            {selectedStudy.testScenario.countermeasures.map((step, i) => (
+              <div
+                key={i}
+                className="p-2.5 rounded-lg bg-slate-950/90 border border-slate-800 text-slate-200 flex items-start gap-2"
+              >
+                <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400 mt-0.5 shrink-0" />
+                <span>{step}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* Study Selector Strip */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-2.5">
@@ -115,18 +173,16 @@ export const OsdrBenchmarkPanel: React.FC<OsdrBenchmarkPanelProps> = ({
               key={study.studyId}
               type="button"
               onClick={() => setSelectedStudyId(study.studyId)}
-              className={`p-3 rounded-xl border text-left transition-all cursor-pointer flex flex-col justify-between gap-2 ${
+              className={`p-3 rounded-xl border text-left transition-colors cursor-pointer flex flex-col justify-between gap-2 ${
                 isSelected
                   ? 'bg-slate-800 border-cyan-500 ring-1 ring-cyan-500/70'
                   : 'bg-slate-950 border-slate-800 hover:border-slate-700'
               }`}
             >
               <div className="flex items-center justify-between">
-                <span className="px-2 py-0.5 rounded bg-indigo-950 border border-indigo-700/60 text-indigo-300 font-mono text-[11px] font-bold">
-                  {study.studyId}
-                </span>
+                <span className="font-mono text-xs font-bold text-indigo-300">{study.studyId}</span>
                 {isActiveTest && (
-                  <span className="text-[10px] font-mono font-bold text-amber-300">ACTIVE TEST</span>
+                  <span className="text-[10px] font-mono font-bold text-amber-300">ACTIVE</span>
                 )}
               </div>
               <div>
@@ -140,58 +196,46 @@ export const OsdrBenchmarkPanel: React.FC<OsdrBenchmarkPanelProps> = ({
         })}
       </div>
 
-      {/* Selected Study Details + Biomarker Table */}
+      {/* Selected Study Details + Biomarker Comparison */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-5">
         {/* Left: Plain-English Space Biology Explanation */}
-        <div className="lg:col-span-5 bg-slate-950 border border-slate-800 rounded-xl p-4 space-y-3.5">
-          <div className="flex items-center justify-between border-b border-slate-800 pb-2.5">
-            <div className="flex items-center gap-2">
+        <div className="lg:col-span-5 bg-slate-950 border border-slate-800 rounded-xl p-4 space-y-3">
+          <div className="flex items-center justify-between border-b border-slate-800 pb-2">
+            <div className="flex items-center gap-2 text-xs font-mono font-bold text-cyan-300">
               <Microscope className="w-4 h-4 text-cyan-400" />
-              <span className="text-xs font-mono font-bold text-cyan-300">
-                {selectedStudy.studyId} · {selectedStudy.cohortLabel}
-              </span>
+              <span>{selectedStudy.studyId} Summary</span>
             </div>
-            <span className="text-[11px] font-mono text-slate-400 uppercase">
+            <span className="text-[11px] font-mono text-slate-400">
               {selectedStudy.environmentId.replace('_', ' ')}
             </span>
           </div>
 
           <p className="text-xs text-slate-400 font-mono">{selectedStudy.missionContext}</p>
 
-          <div className="p-3 rounded-lg bg-slate-900 border border-slate-800 space-y-1">
-            <span className="text-[11px] font-mono font-bold text-slate-300 uppercase block">
-              What Scientists Found (Plain Language):
+          <div className="space-y-1">
+            <span className="text-[11px] font-mono font-bold text-slate-300 block">
+              What Happened in This Flight Study:
             </span>
             <p className="text-xs text-slate-200 leading-relaxed">
               {selectedStudy.plainEnglishFinding}
             </p>
           </div>
 
-          <div className="p-3 rounded-lg bg-cyan-950/30 border border-cyan-800/50 space-y-1">
-            <span className="text-[11px] font-mono font-bold text-cyan-300 uppercase block">
-              Why It Matters To Non-Doctor Crew:
+          <div className="pt-2 border-t border-slate-800 space-y-1">
+            <span className="text-[11px] font-mono font-bold text-cyan-300 block">
+              Why Crew Should Track This:
             </span>
             <p className="text-xs text-slate-200 leading-relaxed">
               {selectedStudy.whyAstronautsCare}
             </p>
           </div>
-
-          {isCurrentlyTestingSelected && (
-            <div className="p-3 rounded-lg bg-amber-950/40 border border-amber-700/60 text-xs text-amber-200 flex items-center gap-2">
-              <AlertTriangle className="w-4 h-4 text-amber-400 flex-shrink-0" />
-              <span>
-                This OSDR anomaly is currently injected into the 3D Body Inspector, Vitals Grid, and Dynamic Charts above.
-              </span>
-            </div>
-          )}
         </div>
 
         {/* Right: Earth Baseline vs Flight Delta vs Crew Live Comparison */}
         <div className="lg:col-span-7 bg-slate-950 border border-slate-800 rounded-xl p-4 space-y-3">
           <div className="flex items-center justify-between">
-            <span className="text-xs font-mono font-bold text-slate-200 flex items-center gap-1.5">
-              <FlaskConical className="w-4 h-4 text-indigo-400" />
-              BIOMARKER COMPARISON (EARTH VS. SPACEFLIGHT STUDY VS. YOUR LIVE STATUS)
+            <span className="text-xs font-mono font-bold text-slate-200">
+              Biomarker Comparison (Earth vs. Space Study vs. Your Dashboard)
             </span>
           </div>
 
@@ -201,7 +245,7 @@ export const OsdrBenchmarkPanel: React.FC<OsdrBenchmarkPanelProps> = ({
               return (
                 <div
                   key={i}
-                  className="p-3.5 rounded-xl bg-slate-900/90 border border-slate-800 space-y-2"
+                  className="p-3 rounded-xl bg-slate-900/90 border border-slate-800 space-y-2"
                 >
                   <div className="flex flex-wrap items-center justify-between gap-2">
                     <div className="flex items-center gap-2">
@@ -224,21 +268,21 @@ export const OsdrBenchmarkPanel: React.FC<OsdrBenchmarkPanelProps> = ({
                     </span>
                   </div>
 
-                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 text-xs font-mono">
+                  <div className="grid grid-cols-3 gap-2 text-xs font-mono">
                     <div className="p-2 rounded bg-slate-950 border border-slate-800">
-                      <span className="text-[10px] text-slate-400 block">EARTH BASELINE</span>
+                      <span className="text-[10px] text-slate-400 block">EARTH NORMAL</span>
                       <span className="text-emerald-300 font-bold tabular-nums">
                         {bm.earthBaseline} {bm.unit}
                       </span>
                     </div>
                     <div className="p-2 rounded bg-slate-950 border border-slate-800">
-                      <span className="text-[10px] text-slate-400 block">OSDR IN-FLIGHT</span>
+                      <span className="text-[10px] text-slate-400 block">SPACE STUDY</span>
                       <span className="text-amber-300 font-bold tabular-nums">
                         {bm.flightObserved} {bm.unit}
                       </span>
                     </div>
-                    <div className="p-2 rounded bg-slate-950 border border-slate-800 col-span-2 sm:col-span-1">
-                      <span className="text-[10px] text-slate-400 block">YOUR LIVE SENSOR</span>
+                    <div className="p-2 rounded bg-slate-950 border border-slate-800">
+                      <span className="text-[10px] text-slate-400 block">YOUR SENSOR</span>
                       <span className="text-cyan-300 font-bold tabular-nums">
                         {liveNow || 'Manual Log'}
                       </span>
@@ -252,20 +296,6 @@ export const OsdrBenchmarkPanel: React.FC<OsdrBenchmarkPanelProps> = ({
                 </div>
               );
             })}
-          </div>
-
-          <div className="pt-1 flex justify-end">
-            <button
-              type="button"
-              onClick={() => {
-                onJumpToEnvironment(selectedStudy.environmentId);
-                onApplyOsdrTestCase(selectedStudy);
-              }}
-              className="text-xs font-mono text-cyan-400 hover:text-cyan-300 flex items-center gap-1 cursor-pointer"
-            >
-              <span>Run {selectedStudy.studyId} anomaly test in body viewer &amp; charts</span>
-              <ArrowRight className="w-3.5 h-3.5" />
-            </button>
           </div>
         </div>
       </div>

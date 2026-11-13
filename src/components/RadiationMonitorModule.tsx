@@ -20,6 +20,9 @@ import {
   Info,
 } from 'lucide-react';
 import { calculateRadiationBiologicalImpact } from '../utils/scienceCalculators';
+import { evaluateSpecificNasaRisks } from '../data/nasaHrpRisks';
+import { SmartRiskPills } from './NasaRiskPillsAndModal';
+import { CansNeutronHudWidget } from './CansNeutronHudWidget';
 
 export interface RadiationExposureLog {
   id: string;
@@ -50,10 +53,18 @@ export const RadiationMonitorModule: React.FC<RadiationMonitorModuleProps> = ({
   onDoseRateChange,
   onMitigationTriggered,
 }) => {
-  // Live dosimeter rate
+  // Live dosimeter rate synced with dashboard telemetry / emergencies / OSDR test cases
   const [doseRate, setDoseRate] = useState<number>(initialDoseRate);
   const [cumulativeCareer, setCumulativeCareer] = useState<number>(initialCareerDose);
   const [cumulative30Day, setCumulative30Day] = useState<number>(3.8);
+
+  useEffect(() => {
+    setDoseRate(initialDoseRate);
+  }, [initialDoseRate]);
+
+  useEffect(() => {
+    setCumulativeCareer(initialCareerDose);
+  }, [initialCareerDose]);
 
   // Breakdown by source
   const [doseSources, setDoseSources] = useState({
@@ -195,6 +206,8 @@ export const RadiationMonitorModule: React.FC<RadiationMonitorModuleProps> = ({
     setPolyethyleneShieldsActive(nextState);
     if (nextState) {
       logAction('Deployed Auxiliary 5cm HDPE Sleeping Quarter Shields', 30, 'High-density polyethylene hydrogen-rich blocks deployed to shield sleeping berth.');
+    } else {
+      logAction('Stowed Auxiliary HDPE Sleeping Quarter Shields', 0, 'Returned sleeping berth to standard shielding configuration.');
     }
   };
 
@@ -211,21 +224,41 @@ export const RadiationMonitorModule: React.FC<RadiationMonitorModuleProps> = ({
 
   // 5. Schedule Alterations
   const handleCancelEVA = () => {
-    setEvaCancelled(true);
-    logAction(
-      'MISSION SCHEDULE ALTERATION: Emergency EVA Spacewalk Abort / Postponement',
-      100,
-      'Ground Flight Surgeon and Onboard Triage halted all exterior EVA egress until dosimeters confirm flare passage.'
-    );
+    const next = !evaCancelled;
+    setEvaCancelled(next);
+    if (next) {
+      logAction(
+        'MISSION SCHEDULE ALTERATION: Emergency EVA Spacewalk Abort / Postponement',
+        100,
+        'Ground Flight Surgeon and Onboard Triage halted all exterior EVA egress until dosimeters confirm flare passage.'
+      );
+    } else {
+      logAction('Resumed Normal EVA Schedule Clearance', 0, 'Exterior EVA sortie stand-down cleared by crew.');
+    }
   };
 
   const handlePostponeExercise = () => {
-    setExercisePostponed(true);
-    logAction(
-      'MISSION SCHEDULE ALTERATION: Postponed High-Intensity Cardiovascular ARED Workout',
-      25,
-      'Delayed heavy resistance cycle to prevent elevated minute ventilation and accelerated vascular radiotoxin circulation.'
-    );
+    const next = !exercisePostponed;
+    setExercisePostponed(next);
+    if (next) {
+      logAction(
+        'MISSION SCHEDULE ALTERATION: Postponed High-Intensity Cardiovascular ARED Workout',
+        25,
+        'Delayed heavy resistance cycle to prevent elevated minute ventilation and accelerated vascular radiotoxin circulation.'
+      );
+    } else {
+      logAction('Resumed Scheduled ARED Exercise Cycle', 0, 'ARED resistance exercise returned to normal schedule.');
+    }
+  };
+
+  const handleResetAllCountermeasures = () => {
+    setInStormShelter(false);
+    setAttitudeAligned(false);
+    setPolyethyleneShieldsActive(false);
+    setEvaCancelled(false);
+    setExercisePostponed(false);
+    setActiveSupplements([]);
+    logAction('Cleared Active Radiation Countermeasures', 0, 'Countermeasure toggles reset for next flare cycle.');
   };
 
   // Inject Scenarios
@@ -284,7 +317,7 @@ export const RadiationMonitorModule: React.FC<RadiationMonitorModuleProps> = ({
         <div className="flex items-center gap-3">
           <div className="px-3.5 py-2 rounded-xl bg-slate-950 border border-slate-800 flex items-center gap-2.5 font-mono text-xs">
             <div
-              className={`w-3 h-3 rounded-full animate-pulse ${
+              className={`w-3 h-3 rounded-full ${
                 doseRate >= 250
                   ? 'bg-rose-500 shadow-lg shadow-rose-500/50'
                   : doseRate >= 50
@@ -310,9 +343,36 @@ export const RadiationMonitorModule: React.FC<RadiationMonitorModuleProps> = ({
         </div>
       </div>
 
+      {/* Linked NASA HRP Specific Risk Pill: Radiation-Induced Cancers */}
+      {(() => {
+        const { allRisks } = evaluateSpecificNasaRisks({
+          radiationRate: doseRate,
+          cumulativeDoseMsv: cumulativeCareer,
+        });
+        const radRisk = allRisks.find((r) => r.spec.id === 'radiation_cancer');
+        if (!radRisk) return null;
+        return (
+          <div className="p-3 rounded-xl bg-slate-950 border border-slate-800">
+            <SmartRiskPills
+              compact
+              title="Linked NASA HRP Radiation Risk"
+              risks={[radRisk]}
+            />
+          </div>
+        );
+      })()}
+
+      {/* CANS (Canadian Active Neutron Spectrometer) Dedicated Feed */}
+      <CansNeutronHudWidget
+        doseRateUSv={doseRate}
+        cumulativeDoseMsv={cumulativeCareer}
+        inStormShelter={inStormShelter}
+        onTriggerShelter={!inStormShelter ? handleToggleStormShelter : undefined}
+      />
+
       {/* Threshold Alert Banner (Appears when predefined thresholds approached or breached) */}
       {activeAlert && (
-        <div className="p-4 rounded-xl bg-rose-950/90 border-2 border-rose-600 shadow-2xl flex items-start gap-3.5 animate-pulse">
+        <div className="p-4 rounded-xl bg-rose-950/90 border-2 border-rose-600 shadow-2xl flex items-start gap-3.5">
           <ShieldAlert className="w-6 h-6 text-rose-400 flex-shrink-0 mt-0.5" />
           <div className="space-y-1">
             <h4 className="text-xs sm:text-sm font-bold font-mono text-rose-200 uppercase tracking-wide">
@@ -460,14 +520,21 @@ export const RadiationMonitorModule: React.FC<RadiationMonitorModuleProps> = ({
 
       {/* Proactive Countermeasures Suite (Interactive Action Matrix) */}
       <div className="space-y-4">
-        <div className="border-b border-slate-800 pb-2 flex items-center justify-between">
+        <div className="border-b border-slate-800 pb-2 flex flex-wrap items-center justify-between gap-2">
           <h3 className="text-sm font-bold font-mono text-slate-100 uppercase tracking-wider flex items-center gap-2">
             <ShieldCheck className="w-4 h-4 text-emerald-400" />
             Proactive Radiation Countermeasures &amp; Mitigation Protocols:
           </h3>
-          <span className="text-[11px] font-mono text-slate-400">
-            Click action to engage &amp; log
-          </span>
+          {(inStormShelter || attitudeAligned || polyethyleneShieldsActive || evaCancelled || exercisePostponed || activeSupplements.length > 0) && (
+            <button
+              type="button"
+              onClick={handleResetAllCountermeasures}
+              className="px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-[11px] font-mono text-slate-300 flex items-center gap-1 cursor-pointer"
+            >
+              <RotateCcw className="w-3 h-3" />
+              <span>Reset Countermeasures</span>
+            </button>
+          )}
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -536,10 +603,13 @@ export const RadiationMonitorModule: React.FC<RadiationMonitorModuleProps> = ({
               <button
                 type="button"
                 onClick={handleTogglePolyethylene}
-                disabled={polyethyleneShieldsActive}
-                className="w-full py-2 px-3 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-mono font-semibold transition cursor-pointer disabled:opacity-50"
+                className={`w-full py-2 px-3 rounded-lg text-xs font-mono font-semibold transition cursor-pointer ${
+                  polyethyleneShieldsActive
+                    ? 'bg-cyan-950 border border-cyan-500 text-cyan-300'
+                    : 'bg-slate-800 hover:bg-slate-700 text-slate-200'
+                }`}
               >
-                <span>{polyethyleneShieldsActive ? 'HDPE Shielding Active' : 'Deploy HDPE Berth Shields'}</span>
+                <span>{polyethyleneShieldsActive ? 'HDPE Shielding Active (Click to Stow)' : 'Deploy HDPE Berth Shields'}</span>
               </button>
             </div>
           </div>
@@ -628,10 +698,13 @@ export const RadiationMonitorModule: React.FC<RadiationMonitorModuleProps> = ({
               <button
                 type="button"
                 onClick={handleCancelEVA}
-                disabled={evaCancelled}
-                className="w-full py-2 px-3 rounded-lg bg-rose-950 hover:bg-rose-900 border border-rose-700 text-rose-200 text-xs font-mono font-bold transition cursor-pointer disabled:opacity-50"
+                className={`w-full py-2 px-3 rounded-lg border text-xs font-mono font-bold transition cursor-pointer ${
+                  evaCancelled
+                    ? 'bg-rose-900 border-rose-500 text-white'
+                    : 'bg-rose-950 hover:bg-rose-900 border-rose-700 text-rose-200'
+                }`}
               >
-                <span>{evaCancelled ? 'EVA Sortie Stand-Down Order Active' : 'Order Immediate EVA Abort'}</span>
+                <span>{evaCancelled ? 'EVA Stand-Down Active (Click to Clear)' : 'Order Immediate EVA Abort'}</span>
               </button>
             </div>
 
@@ -647,10 +720,13 @@ export const RadiationMonitorModule: React.FC<RadiationMonitorModuleProps> = ({
               <button
                 type="button"
                 onClick={handlePostponeExercise}
-                disabled={exercisePostponed}
-                className="w-full py-2 px-3 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-mono font-semibold transition cursor-pointer disabled:opacity-50"
+                className={`w-full py-2 px-3 rounded-lg text-xs font-mono font-semibold transition cursor-pointer ${
+                  exercisePostponed
+                    ? 'bg-amber-950 border border-amber-500 text-amber-200'
+                    : 'bg-slate-800 hover:bg-slate-700 text-slate-200'
+                }`}
               >
-                <span>{exercisePostponed ? 'ARED Cycle Postponed 12h' : 'Postpone ARED Exercise'}</span>
+                <span>{exercisePostponed ? 'ARED Postponed 12h (Click to Resume)' : 'Postpone ARED Exercise'}</span>
               </button>
             </div>
 

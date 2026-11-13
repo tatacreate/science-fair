@@ -24,10 +24,9 @@ import {
   SimulationScenario,
   TriageLevel,
 } from './types/heliomed';
-import { OrbitautsEmblem } from './components/OrbitautsEmblem';
+import { VitaluatsEmblem } from './components/OrbitautsEmblem';
 import { Biometric3DViewer } from './components/Biometric3DViewer';
 import { TelemetryVitalsGrid } from './components/TelemetryVitalsGrid';
-import { ClinicalTriageEngine } from './components/ClinicalTriageEngine';
 import { WorkspaceHub } from './components/WorkspaceHub';
 import { DailyNotificationBanner } from './components/DailyNotificationBanner';
 import { DailySelfCheckinModal } from './components/DailySelfCheckinModal';
@@ -54,49 +53,67 @@ import {
 } from './data/habitatEnvironments';
 import { INITIAL_CREW, MissionCrewMember } from './data/missions';
 import {
-  Radio,
+  evaluateNasaFiveHazards,
+  NasaHazardStatus,
+} from './data/nasaFiveHazards';
+import { evaluateSpecificNasaRisks } from './data/nasaHrpRisks';
+import { NasaFiveHazardsWidget } from './components/NasaFiveHazardsWidget';
+import { NasaReferenceModal } from './components/NasaReferenceModal';
+import { NasaRiskMatrixModal, SmartRiskPills } from './components/NasaRiskPillsAndModal';
+import {
   LogOut,
-  ClipboardCheck,
-  Moon,
-  Smile,
-  HeartPulse,
-  Target,
-  AlertCircle,
-  Clock,
-  Shield,
-  ChevronRight,
   Home,
   Users,
-  FileCheck,
   Siren,
+  Activity,
+  TrendingUp,
+  Radiation,
+  FileSpreadsheet,
+  Award,
+  RotateCcw,
+  BookOpen,
+  Compass,
+  ShieldCheck,
 } from 'lucide-react';
+
+type StationTab = 'body' | 'trends' | 'routine' | 'emergency' | 'comms';
 
 export default function App() {
   const [user, setUser] = useState<User | null>(null);
   const [offlineUser, setOfflineUser] = useState<User | null>(null);
   const [isLoggingIn, setIsLoggingIn] = useState(false);
   const [authError, setAuthError] = useState<string | null>(null);
-  const [theme, setTheme] = useState<'light' | 'dark'>('dark');
 
   const [appState, setAppState] = useState<'landing' | 'role-select' | 'authenticated'>('landing');
   const [userRole, setUserRole] = useState<'astronaut' | 'doctor' | null>(null);
   const [missionCode, setMissionCode] = useState<string>('ARTEMIS-II');
   const [selectedAstronautId, setSelectedAstronautId] = useState<string>('christina-koch');
+  const [activeStationTab, setActiveStationTab] = useState<StationTab>('body');
 
   const activeUser = user || offlineUser;
-  
-  const toggleTheme = () => setTheme(prev => prev === 'light' ? 'dark' : 'light');
 
-  // Daily Check-in Form Modal & History
+  // Daily Check-in Form Modal, NASA Reference Modal, Risk Matrix Modal, EVA Toggle & Mars Delay Timer
   const [isCheckinModalOpen, setIsCheckinModalOpen] = useState(false);
+  const [isNasaRefOpen, setIsNasaRefOpen] = useState(false);
+  const [isRiskMatrixOpen, setIsRiskMatrixOpen] = useState(false);
+  const [evaMode, setEvaMode] = useState(false);
+  const [marsTransitDelaySeconds, setMarsTransitDelaySeconds] = useState<number>(1214);
   const [dailyCheckins, setDailyCheckins] = useState<DailyCheckin[]>([]);
-  const [selectedHistoryCheckin, setSelectedHistoryCheckin] = useState<DailyCheckin | null>(null);
 
-  // Interactive 3D Body Region & Multi-Modal Exam Workbench Sync
+  // Interactive 3D Body Region & Exam Workbench Sync
   const [selectedBodyRegionId, setSelectedBodyRegionId] = useState<string | null>(null);
-  const [examWorkbenchTab, setExamWorkbenchTab] = useState<'keyboard' | 'mouse' | 'camera' | 'guide' | null>(null);
+  const [regionFocusNonce, setRegionFocusNonce] = useState<number>(0);
+  const [examTabRequest, setExamTabRequest] = useState<{
+    tab: 'keyboard' | 'mouse' | 'camera' | 'guide';
+    nonce: number;
+  } | null>(null);
+  const [activeChartRequest, setActiveChartRequest] = useState<{
+    id: TrackedChartIndicatorId;
+    nonce: number;
+  } | null>(null);
+
   const examSectionRef = React.useRef<HTMLDivElement>(null);
-  const emergencySectionRef = React.useRef<HTMLDivElement>(null);
+  const bodySectionRef = React.useRef<HTMLDivElement>(null);
 
   // Multi-Environment Habitat & Gamification Progress
   const [activeEnvId, setActiveEnvId] = useState<HabitatEnvironmentId>('spacecraft');
@@ -132,15 +149,15 @@ export default function App() {
     { label: 'T-1m', value: 2.1 },
   ]);
 
-  // Active Simulation Scenario (for acute emergencies)
+  // Active Simulation Scenario (for emergencies or OSDR tests)
   const [activeScenario, setActiveScenario] = useState<SimulationScenario | null>(null);
 
   // Cabin Habitat Environment
   const [cabinEnvironment, setCabinEnvironment] = useState<CabinEnvironment>({
-    ambientCO2: 2.3, // mmHg
-    ambientPressure: 101.3, // kPa
-    cabinTemp: 21.8, // °C
-    o2Fraction: 21.2, // %
+    ambientCO2: 2.3,
+    ambientPressure: 101.3,
+    cabinTemp: 21.8,
+    o2Fraction: 21.2,
     relativeHumidity: 48,
     speRadiationFlux: 4.2,
   });
@@ -160,7 +177,6 @@ export default function App() {
     fatigueScore: 24,
   });
 
-
   // Active Mission & Crew lookup
   const activeMissionCode = missionCode || 'ARTEMIS-II';
   const missionCrewList: MissionCrewMember[] =
@@ -168,10 +184,7 @@ export default function App() {
   const currentAstronaut =
     missionCrewList.find((c) => c.id === selectedAstronautId) || missionCrewList[0];
 
-  // Current Astronaut identity (Prioritizes the exact name entered by the astronaut)
   const astronautName = activeUser?.displayName || currentAstronaut?.name || 'Christina Koch';
-
-  // Determine global triage level
   const currentTriageLevel: TriageLevel = activeScenario ? activeScenario.severity : 'NOMINAL';
 
   // Test Firestore connection & listen for Auth state
@@ -186,7 +199,6 @@ export default function App() {
   // Listen to daily_checkins from Firestore when user is authenticated
   useEffect(() => {
     if (!user) {
-      // Default local sample check-in so astronaut sees realistic baseline
       const initialSample: DailyCheckin = {
         id: 'sample-01',
         userId: 'local',
@@ -194,15 +206,16 @@ export default function App() {
         date: new Date().toISOString().split('T')[0],
         sleepQuality: 8,
         sleepHours: 7.0,
-        mentalHealth: 'Calm & Focused: Settling into mission routine, sensory adjustments progressing well.',
-        overallFeeling: 'Good physical energy. Normal light cephalic fullness upon wake-up.',
+        mentalHealth: 'Calm & Focused',
+        overallFeeling: 'Good energy with minor lower-back tightness.',
         hasPain: true,
         painAreas: ['Spine / Lumbar'],
         painSeverity: 3,
-        painNotes: 'Mild morning lumbar stiffness from microgravity spinal elongation.',
-        habitsToImprove: ['Hydration / Electrolyte intake', 'Spinal stretching routine'],
-        habitsStrugglingWith: ['Falling asleep in sleeping sack'],
-        aiFeedback: 'Autonomous Guidance: Your sleep score of 8/10 indicates good restorative adaptation. For spinal elongation stiffness, perform 15 minutes of knees-to-chest fetal stretching before beginning your ARED cycle. Maintain 2.5L isotonic fluid intake to counteract spaceflight plasma contraction.',
+        painNotes: 'Morning lower-back stretch needed.',
+        habitsToImprove: ['Hydration', 'Stretching'],
+        habitsStrugglingWith: ['Sleeping sack comfort'],
+        aiFeedback:
+          'Perform 15 minutes of knees-to-chest stretching and maintain 2.5L water intake today.',
         createdAt: '08:15 UTC',
       };
       setDailyCheckins([initialSample]);
@@ -216,7 +229,6 @@ export default function App() {
       q,
       (snapshot) => {
         const fetched = snapshot.docs.map((docSnap) => docSnap.data() as DailyCheckin);
-        // Sort descending by date/id
         fetched.sort((a, b) => b.id.localeCompare(a.id));
         setDailyCheckins(fetched);
       },
@@ -228,7 +240,7 @@ export default function App() {
     return () => unsubscribe();
   }, [user]);
 
-  // Real-time telemetry generator loop (subtle natural drift or scenario modulation)
+  // Real-time telemetry loop
   useEffect(() => {
     const interval = setInterval(() => {
       setTelemetry((prev) => {
@@ -242,8 +254,12 @@ export default function App() {
             hrvRmssd: Math.max(12, Math.round((mod.hrvRmssd ?? prev.hrvRmssd) + noise * 0.5)),
             spo2: Math.min(100, Math.round((mod.spo2 ?? prev.spo2) + (Math.random() > 0.7 ? 1 : 0))),
             coreTemp: +(prev.coreTemp + (Math.random() - 0.5) * 0.04).toFixed(2),
-            radiationDoseRate: +(mod.radiationDoseRate ?? prev.radiationDoseRate + (Math.random() - 0.5) * 0.2).toFixed(1),
-            respiratoryRate: Math.round((mod.respiratoryRate ?? prev.respiratoryRate) + (Math.random() > 0.6 ? 1 : 0)),
+            radiationDoseRate: +(
+              mod.radiationDoseRate ?? prev.radiationDoseRate + (Math.random() - 0.5) * 0.2
+            ).toFixed(1),
+            respiratoryRate: Math.round(
+              (mod.respiratoryRate ?? prev.respiratoryRate) + (Math.random() > 0.6 ? 1 : 0)
+            ),
             systolicBp: Math.round(mod.systolicBp ?? prev.systolicBp),
             diastolicBp: Math.round(mod.diastolicBp ?? prev.diastolicBp),
             fatigueScore: mod.fatigueScore ?? prev.fatigueScore,
@@ -263,7 +279,10 @@ export default function App() {
           spo2: Math.min(99, Math.max(97, Math.round(prev.spo2 + (Math.random() > 0.8 ? -1 : 1)))),
           coreTemp: +(36.9 + (Math.random() - 0.5) * 0.15).toFixed(2),
           radiationDoseRate: newRad,
-          respiratoryRate: Math.min(18, Math.max(14, Math.round(prev.respiratoryRate + (Math.random() - 0.5)))),
+          respiratoryRate: Math.min(
+            18,
+            Math.max(14, Math.round(prev.respiratoryRate + (Math.random() - 0.5)))
+          ),
         };
       });
     }, 1200);
@@ -271,7 +290,7 @@ export default function App() {
     return () => clearInterval(interval);
   }, [activeScenario, activeEnvId]);
 
-  // Sample live HR & Radiation trajectory every 6 seconds for smooth time-series trend
+  // Sample live HR & Radiation trajectory every 6 seconds
   useEffect(() => {
     const chartTicker = setInterval(() => {
       const timeLabel = new Date().toLocaleTimeString('en-US', {
@@ -286,6 +305,14 @@ export default function App() {
     }, 6000);
     return () => clearInterval(chartTicker);
   }, [telemetry.heartRate, telemetry.radiationDoseRate]);
+
+  // Live Mars Transit Delay countdown / orbital drift timer (20m 14s window)
+  useEffect(() => {
+    const delayTimer = setInterval(() => {
+      setMarsTransitDelaySeconds((prev) => (prev <= 1185 ? 1220 : prev - 1));
+    }, 1000);
+    return () => clearInterval(delayTimer);
+  }, []);
 
   const updateGamification = (updater: (prev: GamificationProgress) => GamificationProgress) => {
     setGamification((prev) => {
@@ -328,11 +355,15 @@ export default function App() {
 
   const handleLaunchRoutineAction = (routine: RoutinePromptSpec) => {
     setSelectedBodyRegionId(routine.targetRegionId);
+    setRegionFocusNonce((n) => n + 1);
     if (routine.targetTab === 'daily_checkin') {
       setIsCheckinModalOpen(true);
     } else {
-      setExamWorkbenchTab(routine.targetTab);
-      examSectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      setActiveStationTab('body');
+      setExamTabRequest({ tab: routine.targetTab, nonce: Date.now() });
+      setTimeout(() => {
+        examSectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      }, 60);
     }
   };
 
@@ -345,7 +376,11 @@ export default function App() {
 
     if (
       numericValue !== null &&
-      (indicatorId === 'glucose' || indicatorId === 'onsd' || indicatorId === 'urine_sg')
+      (indicatorId === 'glucose' ||
+        indicatorId === 'onsd' ||
+        indicatorId === 'urine_sg' ||
+        indicatorId === 'radiation' ||
+        indicatorId === 'spo2')
     ) {
       const timeLabel = new Date().toLocaleTimeString('en-US', {
         hour: '2-digit',
@@ -402,6 +437,7 @@ export default function App() {
   const handleApplyOsdrTestCase = (dataset: OsdrStudyDataset) => {
     handleSelectScenario(dataset.testScenario);
     setSelectedBodyRegionId(dataset.targetRegionId);
+    setRegionFocusNonce((n) => n + 1);
     setCabinEnvironment((prev) => ({
       ...prev,
       ...dataset.cabinOverride,
@@ -411,22 +447,36 @@ export default function App() {
       ...dataset.vitalsOverride,
       timestamp: Date.now(),
     }));
+
     if (dataset.chartTargetIndicator && dataset.chartSampleValue !== undefined) {
       const targetId = dataset.chartTargetIndicator;
       const val = dataset.chartSampleValue;
       setCustomLoggedSeries((prev) => ({
         ...prev,
         [targetId]: [
-          ...(prev[targetId] || []).slice(-4),
+          ...(prev[targetId] || []).filter((p) => p.label !== dataset.studyId).slice(-3),
           { label: dataset.studyId, value: val },
         ],
       }));
+      setActiveChartRequest({ id: targetId, nonce: Date.now() });
     }
+  };
+
+  const handleInspectOsdrInBody = (dataset: OsdrStudyDataset) => {
+    setSelectedBodyRegionId(dataset.targetRegionId);
+    setRegionFocusNonce((n) => n + 1);
+    setActiveStationTab('body');
+    setTimeout(() => {
+      bodySectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }, 60);
   };
 
   const handleSimulateEmergency = (sc: SimulationScenario | null, regionId: string | null) => {
     handleSelectScenario(sc);
     setSelectedBodyRegionId(regionId);
+    if (regionId) {
+      setRegionFocusNonce((n) => n + 1);
+    }
   };
 
   // Save new daily checkin to Firestore or local state
@@ -442,14 +492,16 @@ export default function App() {
     }
   };
 
-
   const handleLogin = async (role: 'astronaut' | 'doctor', code: string, customName?: string) => {
     setIsLoggingIn(true);
     setAuthError(null);
     try {
       const result = await signInWithGoogle();
       if (result && result.user) {
-        const preferredName = customName?.trim() || result.user.displayName || (role === 'doctor' ? 'Dr. Josef Schmid' : 'Christina Koch');
+        const preferredName =
+          customName?.trim() ||
+          result.user.displayName ||
+          (role === 'doctor' ? 'Dr. Josef Schmid' : 'Christina Koch');
         setUser(result.user);
         setOfflineUser({
           ...result.user,
@@ -460,13 +512,20 @@ export default function App() {
         setAppState('authenticated');
       }
     } catch (err: any) {
-      console.warn('Firebase Google Auth popup cancelled or unavailable; initializing direct simulation:', err);
-      const preferredName = customName?.trim() || (role === 'doctor' ? 'Dr. Josef Schmid' : 'Christina Koch');
+      console.warn(
+        'Firebase Google Auth popup cancelled or unavailable; initializing direct simulation:',
+        err
+      );
+      const preferredName =
+        customName?.trim() || (role === 'doctor' ? 'Dr. Josef Schmid' : 'Christina Koch');
       setOfflineUser({
         uid: `crew-${role}-${Date.now().toString(36)}`,
         displayName: preferredName,
         photoURL: null,
-        email: role === 'doctor' ? 'jschmid@nasa.gov' : `${preferredName.toLowerCase().replace(/[^a-z0-9]/g, '')}@nasa.gov`,
+        email:
+          role === 'doctor'
+            ? 'jschmid@nasa.gov'
+            : `${preferredName.toLowerCase().replace(/[^a-z0-9]/g, '')}@nasa.gov`,
       } as any);
       setUserRole(role);
       setMissionCode(code);
@@ -477,12 +536,16 @@ export default function App() {
   };
 
   const handleDirectEnter = (role: 'astronaut' | 'doctor', code: string, customName?: string) => {
-    const preferredName = customName?.trim() || (role === 'doctor' ? 'Dr. Josef Schmid' : 'Christina Koch');
+    const preferredName =
+      customName?.trim() || (role === 'doctor' ? 'Dr. Josef Schmid' : 'Christina Koch');
     setOfflineUser({
       uid: `crew-${role}-${Date.now().toString(36)}`,
       displayName: preferredName,
       photoURL: null,
-      email: role === 'doctor' ? 'jschmid@nasa.gov' : `${preferredName.toLowerCase().replace(/[^a-z0-9]/g, '')}@nasa.gov`,
+      email:
+        role === 'doctor'
+          ? 'jschmid@nasa.gov'
+          : `${preferredName.toLowerCase().replace(/[^a-z0-9]/g, '')}@nasa.gov`,
     } as any);
     setUserRole(role);
     setMissionCode(code);
@@ -523,7 +586,7 @@ export default function App() {
     }
   };
 
-  // 1. Initial Landing & Role Selection Gateways or if not authenticated
+  // 1. Landing & Role Selection
   if (appState === 'landing' || appState === 'role-select' || !activeUser) {
     return (
       <SignInIntroPage
@@ -537,92 +600,125 @@ export default function App() {
     );
   }
 
-  // 2. NASA Flight Surgeon / Doctor Dashboard State
+  // 2. NASA Flight Surgeon Dashboard
   if (userRole === 'doctor') {
     return (
       <DoctorDashboard
         missionCode={activeMissionCode}
         onReturnHome={handleReturnHome}
         onSignOut={handleLogout}
-        theme={theme}
       />
     );
   }
 
-  // 3. Astronaut Autonomous Medical Station State
+  // 3. Astronaut Autonomous Medical Station
   const todayStr = new Date().toISOString().split('T')[0];
   const latestCheckin = dailyCheckins[0] || currentAstronaut?.latestCheckin || null;
   const hasSubmittedToday =
     dailyCheckins.some((c) => c.date === todayStr) || !!currentAstronaut?.hasSubmittedToday;
 
-  // Active pain areas to highlight on the 3D model
   const activePainAreas = latestCheckin?.hasPain
     ? latestCheckin.painAreas
-    : (currentAstronaut?.activePainAreas || []);
+    : currentAstronaut?.activePainAreas || [];
+
+  const activeEnvObj =
+    HABITAT_ENVIRONMENTS.find((e) => e.id === activeEnvId) || HABITAT_ENVIRONMENTS[0];
+  const dueRoutine =
+    activeEnvObj.routines.find((r) => !gamification.completedRoutineIds.includes(r.id)) ||
+    activeEnvObj.routines[0];
+
+  const fiveHazards = evaluateNasaFiveHazards({
+    telemetry,
+    cabin: cabinEnvironment,
+    cumulativeDoseMsv: currentAstronaut?.cumulativeRadiationDoseMsv || 94.2,
+    latestCheckin,
+    painAreas: activePainAreas,
+    activeEnvId,
+    missionCode: activeMissionCode,
+    activeScenarioId: activeScenario?.id,
+    marsTransitDelaySeconds,
+  });
+
+  const effectiveEvaMode = evaMode || Boolean(latestCheckin?.evaMode);
+  const { activeRisks: activeSpecificRisks, allRisks: allSpecificRisks } =
+    evaluateSpecificNasaRisks({
+      heartRate: telemetry.heartRate,
+      spo2: telemetry.spo2,
+      radiationRate: telemetry.radiationDoseRate,
+      cumulativeDoseMsv: currentAstronaut?.cumulativeRadiationDoseMsv || 94.2,
+      fatigueScore: telemetry.fatigueScore,
+      ambientCO2: cabinEnvironment.ambientCO2,
+      ambientPressure: cabinEnvironment.ambientPressure,
+      painAreas: activePainAreas,
+      sleepQuality: latestCheckin?.sleepQuality,
+      sleepHours: latestCheckin?.sleepHours,
+      mentalHealth: latestCheckin?.mentalHealth,
+      overallFeeling: latestCheckin?.overallFeeling,
+      habitsStrugglingWith: latestCheckin?.habitsStrugglingWith,
+      evaMode: effectiveEvaMode,
+      activeScenarioId: activeScenario?.id,
+      selectedRegionId: selectedBodyRegionId,
+    });
+
+  const handleHazardAction = (hazard: NasaHazardStatus) => {
+    if (hazard.id === 'radiation') {
+      setActiveStationTab('routine');
+    } else if (hazard.id === 'isolation') {
+      setIsCheckinModalOpen(true);
+    } else if (hazard.id === 'distance') {
+      setActiveStationTab('emergency');
+    } else if (hazard.id === 'gravity') {
+      setActiveStationTab('body');
+      setSelectedBodyRegionId('spine_lumbar');
+      setRegionFocusNonce((n) => n + 1);
+    } else if (hazard.id === 'environment') {
+      setActiveStationTab('body');
+      setSelectedBodyRegionId('head_brain');
+      setRegionFocusNonce((n) => n + 1);
+    }
+  };
 
   return (
-    <div className="min-h-screen bg-slate-950 text-slate-100 font-sans selection:bg-cyan-500 selection:text-slate-950 pb-16">
-      {/* Top Mission Navigation Bar */}
+    <div className="min-h-screen bg-slate-950 text-slate-100 font-sans selection:bg-cyan-500 selection:text-slate-950 pb-12">
+      {/* Clean Top Bar */}
       <header className="sticky top-0 z-40 bg-slate-950/95 border-b border-slate-800 backdrop-blur-md px-4 sm:px-6 lg:px-8 py-3">
-        <div className="max-w-7xl mx-auto flex flex-col md:flex-row md:items-center justify-between gap-4">
-          {/* Logo & Identity */}
-          <div className="flex items-center gap-3">
-            <OrbitautsEmblem size="sm" showSubtitle={false} />
+        <div className="max-w-7xl mx-auto flex flex-wrap items-center justify-between gap-4">
+          {/* Brand Zone */}
+          <div className="flex items-center gap-3 shrink-0">
+            <VitaluatsEmblem size="sm" showSubtitle={false} />
             <div>
-              <div className="flex items-center gap-2">
-                <h1 className="text-base sm:text-lg font-serif font-black tracking-wider text-amber-400 uppercase">
-                  The Orbitauts
-                </h1>
-                <span className="text-[11px] font-mono px-2 py-0.5 rounded-full bg-cyan-950 border border-cyan-700/60 text-cyan-300 font-bold">
-                  HELIOMED AUTONOMOUS MEDICAL STATION
-                </span>
-              </div>
-              <p className="text-xs text-slate-400 font-medium">
-                For astronauts in space with zero onboard doctors • Earth comm delay: 14m 28s
+              <h1 className="text-base sm:text-lg font-serif font-black tracking-wider text-amber-400 uppercase whitespace-nowrap">
+                The Vitaluats
+              </h1>
+              <p className="text-[11px] font-mono text-slate-400 whitespace-nowrap">
+                {activeMissionCode} · {astronautName}
               </p>
             </div>
           </div>
 
-          {/* Deep Space Context & Status */}
-          <div className="flex flex-wrap items-center gap-3 text-xs font-mono">
-            {/* Emergency SOS Quick Jump */}
+          {/* Primary Station Action Controls */}
+          <div className="flex flex-wrap items-center gap-2 text-xs font-mono">
             <button
               type="button"
-              onClick={() =>
-                emergencySectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
-              }
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-rose-700 hover:bg-rose-600 border border-rose-500 text-white font-mono text-xs font-bold transition cursor-pointer whitespace-nowrap shrink-0"
-              title="Open Step-by-Step Emergency First-Response Wizard"
+              onClick={() => setActiveStationTab('emergency')}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-rose-700 hover:bg-rose-600 text-white font-bold transition cursor-pointer whitespace-nowrap shrink-0"
             >
               <Siren className="w-3.5 h-3.5" />
               <span>Emergency SOS</span>
             </button>
 
-            {/* Return to Mission Home / Landing */}
-            <button
-              type="button"
-              onClick={handleReturnHome}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-900 hover:bg-slate-800 border border-slate-700 text-slate-300 font-mono text-xs transition cursor-pointer"
-              title="Return to Welcome & Role Selection"
-            >
-              <Home className="w-3.5 h-3.5 text-cyan-400" />
-              <span>Mission Home</span>
-            </button>
-
-            {/* Multi-Crew Account Switcher - Only shown when multiple astronaut profiles exist */}
             {missionCrewList.length > 1 && (
-              <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-900 border border-cyan-800/60 shadow-sm">
+              <div className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-slate-900 border border-slate-800">
                 <Users className="w-3.5 h-3.5 text-cyan-400 flex-shrink-0" />
-                <span className="text-[10px] text-slate-400 font-bold uppercase hidden xl:inline">Crew Profile:</span>
                 <select
                   value={currentAstronaut?.id || ''}
                   onChange={(e) => handleSelectAstronaut(e.target.value)}
-                  className="bg-transparent text-cyan-300 font-mono text-xs font-semibold focus:outline-none cursor-pointer pr-1"
+                  className="bg-transparent text-cyan-300 text-xs font-semibold focus:outline-none cursor-pointer"
                   aria-label="Switch Astronaut Profile"
                 >
                   {missionCrewList.map((m) => (
                     <option key={m.id} value={m.id} className="bg-slate-950 text-slate-200">
-                      {m.name} ({m.role}) {m.activePainAreas.length > 0 ? '⚠️' : '✓'}
+                      {m.name}
                     </option>
                   ))}
                 </select>
@@ -631,105 +727,337 @@ export default function App() {
 
             <button
               type="button"
-              onClick={toggleTheme}
-              className="p-2 rounded-lg bg-slate-900 border border-slate-800 text-slate-400 hover:text-white cursor-pointer"
-              title="Toggle Light / Dark Mode"
+              onClick={handleReturnHome}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-900 hover:bg-slate-800 border border-slate-800 text-slate-300 transition cursor-pointer whitespace-nowrap shrink-0"
             >
-              {theme === 'light' ? '🌙' : '☀️'}
+              <Home className="w-3.5 h-3.5 text-cyan-400" />
+              <span>Home</span>
             </button>
 
-            <div className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-slate-900 border border-slate-800">
-              <span className="w-2 h-2 rounded-full bg-amber-400" />
-              <span className="text-slate-400">MISSION:</span>
-              <span className="text-amber-300 font-bold">{activeMissionCode}</span>
-            </div>
-
-            <div className="hidden lg:flex items-center gap-2 px-3 py-1.5 rounded-xl bg-slate-900 border border-slate-800">
-              <Radio className="w-3.5 h-3.5 text-cyan-400 animate-pulse" />
-              <span className="text-slate-400">EARTH DELAY:</span>
-              <span className="text-cyan-300 font-bold">14m 28s</span>
-            </div>
-
-            {/* Authenticated Astronaut Session */}
-            <div className="flex items-center gap-2 pl-2 border-l border-slate-800">
-              <div className="w-7 h-7 rounded-full bg-cyan-700 flex items-center justify-center font-bold text-xs text-white uppercase overflow-hidden border border-cyan-500 shadow-sm">
-                {activeUser.photoURL ? (
-                  <img src={activeUser.photoURL} alt={activeUser.displayName || 'Astronaut'} className="w-full h-full object-cover" />
-                ) : (
-                  activeUser.displayName?.[0] || 'A'
-                )}
-              </div>
-              <div className="flex flex-col">
-                <span className="text-xs text-slate-200 font-semibold truncate max-w-[130px] hidden sm:inline">
-                  {activeUser.displayName || 'Astronaut'}
-                </span>
-                <span className="text-[10px] text-cyan-400 font-mono hidden sm:inline">
-                  {user ? 'AUTHENTICATED' : 'OFFLINE FLIGHT'}
-                </span>
-              </div>
-              <button
-                type="button"
-                onClick={handleLogout}
-                className="flex items-center gap-1.5 px-2.5 py-1 text-slate-400 hover:text-rose-300 rounded-lg hover:bg-slate-800 border border-transparent hover:border-rose-900/40 text-xs font-mono transition-all cursor-pointer ml-1"
-                title="Sign Out to Intro Page"
-              >
-                <LogOut className="w-3.5 h-3.5" />
-                <span className="hidden md:inline">Sign Out</span>
-              </button>
-            </div>
+            <button
+              type="button"
+              onClick={handleLogout}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-900 hover:bg-rose-950/60 border border-slate-800 text-slate-400 hover:text-rose-300 transition cursor-pointer whitespace-nowrap shrink-0"
+            >
+              <LogOut className="w-3.5 h-3.5" />
+              <span>Sign Out</span>
+            </button>
           </div>
         </div>
       </header>
 
-      {/* Main Container */}
-      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-6 space-y-6">
-        {/* Core Autonomous Medical Station Banner (Clear Purpose) */}
-        <div className="p-4 sm:p-5 rounded-2xl bg-slate-900 border border-slate-800 flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
-          <div className="flex items-start gap-3">
-            <div className="p-2.5 rounded-xl bg-indigo-950 border border-indigo-700/60 text-indigo-400 mt-1 sm:mt-0 flex-shrink-0">
-              <Shield className="w-5 h-5 text-indigo-400" />
-            </div>
-            <div>
-              <h2 className="text-sm sm:text-base font-bold text-slate-100 flex items-center gap-2">
-                Autonomous Astronaut Self-Care &amp; Clinical Station
-                <span className="px-2 py-0.5 rounded text-[10px] font-mono bg-cyan-950 border border-cyan-700 text-cyan-300">
-                  NO DOCTORS ON BOARD
-                </span>
-              </h2>
-              <p className="text-xs text-slate-400 mt-1 max-w-3xl leading-relaxed">
-                You are in deep space. Human doctors cannot come to you in space—they are millions of miles away at NASA centers with an unavoidable 14+ minute transmission delay. This autonomous system empowers you to self-check your vitals, monitor sleep and mental health, relieve pain, track habits, and get immediate medical decision support.
-              </p>
-            </div>
-          </div>
-
-          <div className="flex items-center gap-2">
-            <button
-              type="button"
-              onClick={() => setIsCheckinModalOpen(true)}
-              className="px-4 py-2 rounded-xl bg-cyan-600 hover:bg-cyan-500 text-white font-mono text-xs font-bold flex items-center gap-2 transition-all cursor-pointer shadow-lg shadow-cyan-950"
-            >
-              <ClipboardCheck className="w-4 h-4" />
-              <span>Fill Daily Medical Form</span>
-            </button>
-          </div>
-        </div>
-
-        {/* Daily Notification & Scheduled Measurement Reminder Banner */}
+      {/* Main Workspace */}
+      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-5 space-y-5">
+        {/* Daily Self-Check & Due Routine Reminder */}
         <DailyNotificationBanner
           onOpenCheckin={() => setIsCheckinModalOpen(true)}
           latestCheckin={latestCheckin}
           hasSubmittedToday={hasSubmittedToday}
-          dueRoutine={
-            (HABITAT_ENVIRONMENTS.find((e) => e.id === activeEnvId) || HABITAT_ENVIRONMENTS[0])
-              .routines.find((r) => !gamification.completedRoutineIds.includes(r.id)) ||
-            (HABITAT_ENVIRONMENTS.find((e) => e.id === activeEnvId) || HABITAT_ENVIRONMENTS[0])
-              .routines[0]
-          }
+          dueRoutine={dueRoutine}
           onStartDueRoutine={handleLaunchRoutineAction}
         />
 
-        {/* Emergency First-Response Wizard (Plain-Language Non-Doctor SOS) */}
-        <div ref={emergencySectionRef}>
+        {/* Active Simulation Notice Strip */}
+        {activeScenario && (
+          <div className="p-3.5 rounded-xl bg-amber-950/60 border border-amber-600/80 flex flex-wrap items-center justify-between gap-3 text-xs">
+            <div>
+              <strong className="text-amber-300 font-mono">{activeScenario.name}</strong>
+              <span className="text-slate-300 ml-2">— {activeScenario.clinicalSigns}</span>
+            </div>
+            <button
+              type="button"
+              onClick={() => handleSimulateEmergency(null, null)}
+              className="px-3 py-1.5 rounded-lg bg-slate-900 hover:bg-slate-800 border border-slate-700 text-slate-200 font-mono flex items-center gap-1.5 cursor-pointer whitespace-nowrap"
+            >
+              <RotateCcw className="w-3.5 h-3.5" />
+              <span>Restore Normal Baseline</span>
+            </button>
+          </div>
+        )}
+
+        {/* Compact NASA 5 Hazards Monitor HUD */}
+        <NasaFiveHazardsWidget
+          hazards={fiveHazards}
+          onTriggerHazardAction={handleHazardAction}
+        />
+
+        {/* Quick NASA HRP Readiness Strip: EVA Spacewalk Toggle & Full 15-Risk Matrix Button */}
+        <div className="p-3.5 rounded-xl bg-slate-900/90 border border-slate-800 space-y-2.5">
+          <div className="flex flex-wrap items-center justify-between gap-2.5">
+            <div className="flex flex-wrap items-center gap-2">
+              <button
+                type="button"
+                onClick={() => setEvaMode(!effectiveEvaMode)}
+                className={`px-3 py-1.5 rounded-lg font-mono text-xs font-bold border transition cursor-pointer flex items-center gap-1.5 ${
+                  effectiveEvaMode
+                    ? 'bg-amber-950 border-amber-500 text-amber-200'
+                    : 'bg-slate-950 border-slate-700 text-slate-300 hover:border-cyan-500/70'
+                }`}
+              >
+                <Compass className="w-3.5 h-3.5 text-amber-400" />
+                <span>
+                  Pre/Post-EVA Readiness: {effectiveEvaMode ? 'ON (DCS & Cognitive Check)' : 'OFF'}
+                </span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setIsRiskMatrixOpen(true)}
+                className="px-3 py-1.5 rounded-lg bg-slate-950 hover:bg-slate-800 border border-cyan-700/70 text-cyan-300 font-mono text-xs font-bold transition cursor-pointer flex items-center gap-1.5"
+              >
+                <ShieldCheck className="w-3.5 h-3.5 text-emerald-400" />
+                <span>View NASA HRP Risk Coverage ({allSpecificRisks.length})</span>
+              </button>
+            </div>
+
+            <span className="text-[11px] font-mono text-slate-400">
+              {activeSpecificRisks.length > 0
+                ? `${activeSpecificRisks.length} Active Risk Flag${activeSpecificRisks.length > 1 ? 's' : ''}`
+                : 'All 15 NASA HRP Risks Nominal'}
+            </span>
+          </div>
+
+          {effectiveEvaMode && (
+            <div className="p-2.5 rounded-lg bg-amber-950/35 border border-amber-700/70 text-xs text-amber-100 flex flex-wrap items-center justify-between gap-2">
+              <span>
+                <strong>EVA / Spacewalk Readiness Check Active:</strong> Monitoring{' '}
+                <em>Decompression Sickness (&quot;The Bends&quot;)</em> &amp;{' '}
+                <em>Spacewalk Cognitive Fatigue</em> — verify 100% O₂ pre-breathe &amp; buddy checklist.
+              </span>
+              <span className="font-mono text-[11px] text-amber-300 font-bold">
+                Cabin {cabinEnvironment.ambientPressure.toFixed(1)} kPa
+              </span>
+            </div>
+          )}
+
+          {activeSpecificRisks.length > 0 && (
+            <SmartRiskPills
+              compact
+              title="Flagged NASA HRP Specific Risks (Live Sensors + Check-In)"
+              risks={activeSpecificRisks}
+              onInspectRegion={(regId) => {
+                setActiveStationTab('body');
+                setSelectedBodyRegionId(regId);
+                setRegionFocusNonce((n) => n + 1);
+              }}
+            />
+          )}
+        </div>
+
+        {/* Focused 5-Tab Workspace Navigation */}
+        <div className="flex flex-wrap items-center gap-1.5 p-1.5 rounded-xl bg-slate-900 border border-slate-800">
+          <button
+            type="button"
+            onClick={() => setActiveStationTab('body')}
+            className={`px-3.5 py-2 rounded-lg text-xs font-mono font-semibold transition-colors cursor-pointer flex items-center gap-2 whitespace-nowrap ${
+              activeStationTab === 'body'
+                ? 'bg-cyan-600 text-white'
+                : 'text-slate-300 hover:bg-slate-800'
+            }`}
+          >
+            <Activity className="w-4 h-4" />
+            <span>Body Scan &amp; Exam</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setActiveStationTab('trends')}
+            className={`px-3.5 py-2 rounded-lg text-xs font-mono font-semibold transition-colors cursor-pointer flex items-center gap-2 whitespace-nowrap ${
+              activeStationTab === 'trends'
+                ? 'bg-cyan-600 text-white'
+                : 'text-slate-300 hover:bg-slate-800'
+            }`}
+          >
+            <TrendingUp className="w-4 h-4" />
+            <span>Trends &amp; OSDR Tests</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setActiveStationTab('routine')}
+            className={`px-3.5 py-2 rounded-lg text-xs font-mono font-semibold transition-colors cursor-pointer flex items-center gap-2 whitespace-nowrap ${
+              activeStationTab === 'routine'
+                ? 'bg-cyan-600 text-white'
+                : 'text-slate-300 hover:bg-slate-800'
+            }`}
+          >
+            <Radiation className="w-4 h-4" />
+            <span>Routines &amp; Radiation</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setActiveStationTab('emergency')}
+            className={`px-3.5 py-2 rounded-lg text-xs font-mono font-semibold transition-colors cursor-pointer flex items-center gap-2 whitespace-nowrap ${
+              activeStationTab === 'emergency'
+                ? 'bg-rose-600 text-white'
+                : 'text-rose-300 hover:bg-rose-950/60'
+            }`}
+          >
+            <Siren className="w-4 h-4" />
+            <span>Emergency Wizard</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setActiveStationTab('comms')}
+            className={`px-3.5 py-2 rounded-lg text-xs font-mono font-semibold transition-colors cursor-pointer flex items-center gap-2 whitespace-nowrap ${
+              activeStationTab === 'comms'
+                ? 'bg-cyan-600 text-white'
+                : 'text-slate-300 hover:bg-slate-800'
+            }`}
+          >
+            <FileSpreadsheet className="w-4 h-4" />
+            <span>Doctor Forms &amp; Comms</span>
+          </button>
+
+          <div className="ml-auto hidden sm:flex items-center gap-3 px-3 text-xs font-mono text-amber-300">
+            <Award className="w-4 h-4 text-amber-400" />
+            <span className="tabular-nums">{gamification.xp} XP · {gamification.streakDays}d Streak</span>
+          </div>
+        </div>
+
+        {/* TAB 1: BODY SCAN & EXAM */}
+        {activeStationTab === 'body' && (
+          <div className="space-y-6">
+            {/* Quick Environment Switcher Strip */}
+            <div className="flex flex-wrap items-center justify-between gap-3 p-3.5 rounded-xl bg-slate-900/90 border border-slate-800">
+              <div className="text-xs text-slate-300">
+                <strong className="text-cyan-300">Active Environment:</strong> {activeEnvObj.name}{' '}
+                <span className="text-slate-500">({activeEnvObj.gravityLabel} · {activeEnvObj.commDelayLabel})</span>
+              </div>
+              <div className="flex flex-wrap gap-1.5">
+                {HABITAT_ENVIRONMENTS.map((env) => (
+                  <button
+                    key={env.id}
+                    type="button"
+                    onClick={() => handleChangeEnvironment(env.id)}
+                    className={`px-3 py-1 rounded-lg text-xs font-mono cursor-pointer transition-colors ${
+                      env.id === activeEnvId
+                        ? 'bg-cyan-600 text-white font-bold'
+                        : 'bg-slate-950 border border-slate-800 text-slate-400 hover:text-slate-200'
+                    }`}
+                  >
+                    {env.shortName}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* 3D Anatomical Twin + Live Body & Cabin Vitals */}
+            <div ref={bodySectionRef} className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+              <div className="lg:col-span-7">
+                <Biometric3DViewer
+                  theme="dark"
+                  heartRate={telemetry.heartRate}
+                  spo2={telemetry.spo2}
+                  radiationRate={telemetry.radiationDoseRate}
+                  cumulativeDoseMsv={currentAstronaut?.cumulativeRadiationDoseMsv || 94.2}
+                  status={currentTriageLevel}
+                  painAreas={activePainAreas}
+                  activeScenario={activeScenario?.id}
+                  astronautName={astronautName}
+                  selectedRegionId={selectedBodyRegionId}
+                  regionFocusNonce={regionFocusNonce}
+                  cabinCO2={cabinEnvironment.ambientCO2}
+                  sleepQuality={latestCheckin?.sleepQuality}
+                  mentalHealth={latestCheckin?.mentalHealth}
+                  overallFeeling={latestCheckin?.overallFeeling}
+                  habitsStrugglingWith={latestCheckin?.habitsStrugglingWith}
+                  evaMode={effectiveEvaMode}
+                  onRegionSelect={(regId) => setSelectedBodyRegionId(regId)}
+                  onStartExamForRegion={(regId) => {
+                    setSelectedBodyRegionId(regId);
+                    setRegionFocusNonce((n) => n + 1);
+                    setExamTabRequest({
+                      tab: regId === 'eyes_ocular' ? 'camera' : 'keyboard',
+                      nonce: Date.now(),
+                    });
+                    examSectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                  }}
+                />
+              </div>
+
+              <div className="lg:col-span-5 bg-slate-900/70 border border-slate-800 rounded-2xl p-4 sm:p-5">
+                <TelemetryVitalsGrid
+                  telemetry={telemetry}
+                  cabin={cabinEnvironment}
+                  status={currentTriageLevel}
+                  cumulativeDose={currentAstronaut?.cumulativeRadiationDoseMsv || 94.2}
+                  onOpenRadiationTab={() => setActiveStationTab('routine')}
+                />
+              </div>
+            </div>
+
+            {/* Multi-Modal In-Space Health Self-Assessment */}
+            <div ref={examSectionRef}>
+              <SpaceExamWorkbench
+                astronautName={astronautName}
+                selectedRegionId={selectedBodyRegionId}
+                onSelectRegion={(regId) => setSelectedBodyRegionId(regId)}
+                activeTabRequest={examTabRequest}
+                onExamLogged={handleExamLogged}
+                onUpdateVitals={(updates) =>
+                  setTelemetry((prev) => ({
+                    ...prev,
+                    ...updates,
+                  }))
+                }
+              />
+            </div>
+          </div>
+        )}
+
+        {/* TAB 2: TRENDS & NASA OSDR TESTS */}
+        {activeStationTab === 'trends' && (
+          <div className="space-y-6">
+            <DynamicHealthCharts
+              liveHeartRate={telemetry.heartRate}
+              liveSpo2={telemetry.spo2}
+              liveRadiationRate={telemetry.radiationDoseRate}
+              customLoggedSeries={customLoggedSeries}
+              liveHrHistory={liveHrHistory}
+              liveRadHistory={liveRadHistory}
+              activeChartRequest={activeChartRequest}
+            />
+
+            <OsdrBenchmarkPanel
+              activeScenarioId={activeScenario?.id}
+              onApplyOsdrTestCase={handleApplyOsdrTestCase}
+              onResetOsdrTest={() => handleSimulateEmergency(null, null)}
+              onInspectInBody={handleInspectOsdrInBody}
+              liveTelemetry={telemetry}
+              liveCabin={cabinEnvironment}
+              onJumpToEnvironment={handleChangeEnvironment}
+            />
+          </div>
+        )}
+
+        {/* TAB 3: ROUTINES, HABITATS & RADIATION */}
+        {activeStationTab === 'routine' && (
+          <div className="space-y-6">
+            <EnvironmentAndGamificationHub
+              activeEnvId={activeEnvId}
+              onChangeEnvironment={handleChangeEnvironment}
+              onLaunchRoutineAction={handleLaunchRoutineAction}
+              gamification={gamification}
+              onCompleteRoutine={handleCompleteRoutine}
+            />
+
+            <RadiationMonitorModule
+              astronautName={astronautName}
+              missionCode={activeMissionCode}
+              currentDoseRate={telemetry.radiationDoseRate}
+              cumulativeCareerDose={currentAstronaut?.cumulativeRadiationDoseMsv || 14.2}
+              onDoseRateChange={(newRate) =>
+                setTelemetry((prev) => ({ ...prev, radiationDoseRate: newRate }))
+              }
+            />
+          </div>
+        )}
+
+        {/* TAB 4: EMERGENCY WIZARD */}
+        {activeStationTab === 'emergency' && (
           <EmergencyAssistantModule
             astronautName={astronautName}
             onSimulateEmergency={handleSimulateEmergency}
@@ -740,332 +1068,31 @@ export default function App() {
               }))
             }
           />
-        </div>
-
-        {/* Multi-Environment Habitat Insights, Scheduled Prompts & Gamification */}
-        <EnvironmentAndGamificationHub
-          activeEnvId={activeEnvId}
-          onChangeEnvironment={handleChangeEnvironment}
-          onLaunchRoutineAction={handleLaunchRoutineAction}
-          gamification={gamification}
-          onCompleteRoutine={handleCompleteRoutine}
-        />
-
-        {/* Top Split: 3D Biometric Diagnostics Avatar + Telemetry Fused Grid */}
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
-          {/* 3D Model representing the astronaut's body & pain areas */}
-          <div className="lg:col-span-7 flex flex-col space-y-3">
-            <Biometric3DViewer
-              theme={theme}
-              heartRate={telemetry.heartRate}
-              spo2={telemetry.spo2}
-              radiationRate={telemetry.radiationDoseRate}
-              status={currentTriageLevel}
-              painAreas={activePainAreas}
-              activeScenario={activeScenario?.id}
-              astronautName={astronautName}
-              selectedRegionId={selectedBodyRegionId}
-              onRegionSelect={(regId) => setSelectedBodyRegionId(regId)}
-              onStartExamForRegion={(regId) => {
-                setSelectedBodyRegionId(regId);
-                setExamWorkbenchTab(regId === 'eyes_ocular' ? 'camera' : 'keyboard');
-                examSectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-              }}
-            />
-          </div>
-
-          {/* Vitals Fused Grid */}
-          <div className="lg:col-span-5 bg-slate-900/60 border border-slate-800/80 rounded-2xl p-4 sm:p-5 shadow-xl">
-            <TelemetryVitalsGrid
-              telemetry={telemetry}
-              cabin={cabinEnvironment}
-              status={currentTriageLevel}
-              cumulativeDose={94.2}
-            />
-          </div>
-        </div>
-
-        {/* Multi-Modal In-Space Health Self-Assessment & Exam Workbench */}
-        <div ref={examSectionRef}>
-          <SpaceExamWorkbench
-            astronautName={astronautName}
-            selectedRegionId={selectedBodyRegionId}
-            onSelectRegion={(regId) => setSelectedBodyRegionId(regId)}
-            activeTabOverride={examWorkbenchTab}
-            onExamLogged={handleExamLogged}
-            onUpdateVitals={(updates) =>
-              setTelemetry((prev) => ({
-                ...prev,
-                ...updates,
-              }))
-            }
-          />
-        </div>
-
-        {/* Dynamic Time-Series Health Charts & Plain-Language Indicator Guides */}
-        <DynamicHealthCharts
-          liveHeartRate={telemetry.heartRate}
-          liveSpo2={telemetry.spo2}
-          liveRadiationRate={telemetry.radiationDoseRate}
-          customLoggedSeries={customLoggedSeries}
-          liveHrHistory={liveHrHistory}
-          liveRadHistory={liveRadHistory}
-        />
-
-        {/* Embedded Offline NASA OSDR Spaceflight Biology Benchmark & Testbench */}
-        <OsdrBenchmarkPanel
-          activeScenarioId={activeScenario?.id}
-          onApplyOsdrTestCase={handleApplyOsdrTestCase}
-          onResetOsdrTest={() => handleSimulateEmergency(null, null)}
-          liveTelemetry={telemetry}
-          liveCabin={cabinEnvironment}
-          onJumpToEnvironment={handleChangeEnvironment}
-        />
-
-        {/* Astronaut Self-Check History & Habit Progression Section */}
-        {latestCheckin && (
-          <div className="bg-slate-900/90 border border-slate-800 rounded-2xl p-5 shadow-xl space-y-4">
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-800 pb-3">
-              <div className="flex items-center gap-2.5">
-                <ClipboardCheck className="w-5 h-5 text-cyan-400" />
-                <div>
-                  <h3 className="text-base font-semibold text-slate-100 flex items-center gap-2">
-                    My Daily Self-Check &amp; Habit Progression Log
-                  </h3>
-                  <p className="text-xs text-slate-400">
-                    Latest check-in logged on {latestCheckin.date} ({latestCheckin.createdAt})
-                  </p>
-                </div>
-              </div>
-
-              <button
-                type="button"
-                onClick={() => setIsCheckinModalOpen(true)}
-                className="text-xs text-cyan-400 hover:text-cyan-300 font-mono flex items-center gap-1 cursor-pointer"
-              >
-                <span>Edit / Submit New Check-In</span>
-                <ChevronRight className="w-3.5 h-3.5" />
-              </button>
-            </div>
-
-            {/* 6 Core Self-Check Cards */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3.5">
-              {/* 1. Sleep */}
-              <div className="p-4 rounded-xl bg-slate-950 border border-slate-800 flex flex-col justify-between">
-                <div className="flex items-center justify-between text-xs font-semibold text-slate-300">
-                  <span className="flex items-center gap-1.5 text-cyan-400">
-                    <Moon className="w-4 h-4" /> Sleep Quality
-                  </span>
-                  <span className="font-mono font-bold text-slate-100">{latestCheckin.sleepQuality} / 10</span>
-                </div>
-                <div className="my-2">
-                  <div className="w-full bg-slate-800 rounded-full h-2">
-                    <div
-                      className="bg-cyan-500 h-2 rounded-full"
-                      style={{ width: `${(latestCheckin.sleepQuality / 10) * 100}%` }}
-                    />
-                  </div>
-                </div>
-                <span className="text-[11px] font-mono text-slate-400">
-                  Duration: {latestCheckin.sleepHours} hours in sleeping sack
-                </span>
-              </div>
-
-              {/* 2. Mental Health */}
-              <div className="p-4 rounded-xl bg-slate-950 border border-slate-800 flex flex-col justify-between">
-                <div className="flex items-center justify-between text-xs font-semibold text-slate-300">
-                  <span className="flex items-center gap-1.5 text-amber-400">
-                    <Smile className="w-4 h-4" /> Mental Health
-                  </span>
-                  <span className="px-2 py-0.5 rounded text-[10px] font-mono bg-amber-950 text-amber-300 border border-amber-800">
-                    LOGGED
-                  </span>
-                </div>
-                <p className="my-2 text-xs text-slate-300 line-clamp-2 leading-relaxed">
-                  {latestCheckin.mentalHealth}
-                </p>
-                <span className="text-[11px] font-mono text-slate-400">
-                  Confinement psychological check
-                </span>
-              </div>
-
-              {/* 3. Physical Feeling */}
-              <div className="p-4 rounded-xl bg-slate-950 border border-slate-800 flex flex-col justify-between">
-                <div className="flex items-center justify-between text-xs font-semibold text-slate-300">
-                  <span className="flex items-center gap-1.5 text-emerald-400">
-                    <HeartPulse className="w-4 h-4" /> How You Feel
-                  </span>
-                  <span className="px-2 py-0.5 rounded text-[10px] font-mono bg-emerald-950 text-emerald-300 border border-emerald-800">
-                    REPORTED
-                  </span>
-                </div>
-                <p className="my-2 text-xs text-slate-300 line-clamp-2 leading-relaxed">
-                  {latestCheckin.overallFeeling}
-                </p>
-                <span className="text-[11px] font-mono text-slate-400">
-                  Microgravity subjective readiness
-                </span>
-              </div>
-
-              {/* 4. Pain Assessment */}
-              <div className="p-4 rounded-xl bg-slate-950 border border-slate-800 flex flex-col justify-between">
-                <div className="flex items-center justify-between text-xs font-semibold text-slate-300">
-                  <span className="flex items-center gap-1.5 text-rose-400">
-                    <AlertCircle className="w-4 h-4" /> Pain &amp; Discomfort
-                  </span>
-                  <span
-                    className={`px-2 py-0.5 rounded text-[10px] font-mono font-bold ${
-                      latestCheckin.hasPain
-                        ? 'bg-rose-950 text-rose-300 border border-rose-800'
-                        : 'bg-emerald-950 text-emerald-300 border border-emerald-800'
-                    }`}
-                  >
-                    {latestCheckin.hasPain ? `${latestCheckin.painSeverity}/10 PAIN` : 'NO PAIN'}
-                  </span>
-                </div>
-                <div className="my-2 text-xs text-slate-300">
-                  {latestCheckin.hasPain ? (
-                    <div>
-                      <span className="font-semibold text-rose-300">Areas: </span>
-                      {latestCheckin.painAreas.join(', ')}
-                      {latestCheckin.painNotes && (
-                        <p className="text-[11px] text-slate-400 mt-1 line-clamp-1 italic">
-                          &quot;{latestCheckin.painNotes}&quot;
-                        </p>
-                      )}
-                    </div>
-                  ) : (
-                    <span className="text-emerald-400">Zero physical pain reported today.</span>
-                  )}
-                </div>
-                <span className="text-[11px] font-mono text-slate-400">
-                  {latestCheckin.hasPain ? 'Visualized on 3D avatar' : 'Spinal & joint comfort nominal'}
-                </span>
-              </div>
-
-              {/* 5. Habits to Improve */}
-              <div className="p-4 rounded-xl bg-slate-950 border border-slate-800 flex flex-col justify-between">
-                <div className="flex items-center justify-between text-xs font-semibold text-slate-300">
-                  <span className="flex items-center gap-1.5 text-cyan-400">
-                    <Target className="w-4 h-4" /> Habits To Improve
-                  </span>
-                  <span className="text-[10px] font-mono text-cyan-400 font-bold">
-                    {latestCheckin.habitsToImprove.length} GOALS
-                  </span>
-                </div>
-                <div className="my-2 flex flex-wrap gap-1">
-                  {latestCheckin.habitsToImprove.map((h, i) => (
-                    <span
-                      key={i}
-                      className="px-2 py-0.5 rounded bg-slate-900 border border-slate-800 text-[10px] text-cyan-300 font-mono"
-                    >
-                      {h}
-                    </span>
-                  ))}
-                </div>
-                <span className="text-[11px] font-mono text-slate-400">Targeted habits</span>
-              </div>
-
-              {/* 6. Habits Struggling With */}
-              <div className="p-4 rounded-xl bg-slate-950 border border-slate-800 flex flex-col justify-between">
-                <div className="flex items-center justify-between text-xs font-semibold text-slate-300">
-                  <span className="flex items-center gap-1.5 text-purple-400">
-                    <AlertCircle className="w-4 h-4" /> Habits Struggling With
-                  </span>
-                  <span className="text-[10px] font-mono text-purple-400 font-bold">
-                    {latestCheckin.habitsStrugglingWith.length} CHALLENGES
-                  </span>
-                </div>
-                <div className="my-2 flex flex-wrap gap-1">
-                  {latestCheckin.habitsStrugglingWith.map((h, i) => (
-                    <span
-                      key={i}
-                      className="px-2 py-0.5 rounded bg-slate-900 border border-slate-800 text-[10px] text-purple-300 font-mono"
-                    >
-                      {h}
-                    </span>
-                  ))}
-                </div>
-                <span className="text-[11px] font-mono text-slate-400">Microgravity adaptations</span>
-              </div>
-            </div>
-
-            {/* Onboard Flight Medicine Guidance Banner */}
-            {latestCheckin.aiFeedback && (
-              <div className="p-4 rounded-xl bg-slate-950 border border-slate-800 space-y-2">
-                <div className="flex items-center justify-between text-xs font-mono font-bold text-cyan-400">
-                  <span className="flex items-center gap-2">
-                    <FileCheck className="w-4 h-4 text-cyan-400" />
-                    ONBOARD FLIGHT MEDICINE GUIDANCE (NASA-STD-3001 PROTOCOL):
-                  </span>
-                  <span className="text-amber-400 flex items-center gap-1">
-                    <Clock className="w-3.5 h-3.5" /> EARTH TRANSMIT QUEUED
-                  </span>
-                </div>
-                <div className="text-xs sm:text-sm text-slate-200 leading-relaxed font-sans whitespace-pre-wrap bg-slate-900/60 p-3.5 rounded-lg border border-slate-800/80">
-                  {latestCheckin.aiFeedback}
-                </div>
-              </div>
-            )}
-          </div>
         )}
 
-        {/* Autonomous Edge Triage & Clinical Scenarios Runner */}
-        <ClinicalTriageEngine
-          currentScenario={activeScenario}
-          onSelectScenario={handleSelectScenario}
-          astronautName={astronautName}
-          triageLevel={currentTriageLevel}
-        />
-
-        {/* Radiation Monitoring and Countermeasures Module */}
-        <RadiationMonitorModule
-          astronautName={astronautName}
-          missionCode={activeMissionCode}
-          currentDoseRate={telemetry.radiationDoseRate}
-          cumulativeCareerDose={currentAstronaut?.cumulativeRadiationDoseMsv || 14.2}
-          onDoseRateChange={(newRate) => setTelemetry((prev) => ({ ...prev, radiationDoseRate: newRate }))}
-        />
-
-        {/* Google Workspace Hub (Forms & Clinical Notes in Firestore) */}
-        <WorkspaceHub
-          user={user}
-          onSignInPrompt={() => handleLogin('astronaut', activeMissionCode)}
-          astronautName={astronautName}
-          missionCode={activeMissionCode}
-          dailyCheckins={dailyCheckins}
-        />
-
-
-        {/* The Orbitauts Mission Heritage & Bespoke Emblem Showcase */}
-        <div className="p-6 rounded-2xl bg-gradient-to-r from-slate-900 via-slate-900 to-slate-950 border border-amber-900/40 shadow-2xl flex flex-col md:flex-row items-center justify-between gap-6">
-          <div className="flex items-center gap-5">
-            <OrbitautsEmblem size="lg" showSubtitle={false} />
-            <div className="space-y-1">
-              <span className="text-xs font-mono font-bold text-amber-400 uppercase tracking-widest">
-                The Orbitauts Mission Patch &amp; Ethos
-              </span>
-              <h3 className="text-xl font-serif font-black text-slate-100 tracking-wide">
-                Bespoke Antique Brass Navigational Emblem
-              </h3>
-              <p className="text-xs text-slate-400 max-w-xl leading-relaxed">
-                Dedicated to autonomous deep-space human survival with zero reliance on immediate Earth intervention. Weathered bronze finish, central retro-futuristic rocket, compass rose, and ghost-like transparent orbital mechanics equations (<span className="text-cyan-300 font-mono">Δv = ve · ln(m₀/mf)</span>, <span className="text-cyan-300 font-mono">F = G·(m₁m₂)/r²</span>).
-              </p>
-            </div>
-          </div>
-
-          <div className="flex flex-col sm:flex-row gap-2">
-            <button
-              type="button"
-              onClick={() => setIsCheckinModalOpen(true)}
-              className="px-5 py-2.5 rounded-xl bg-gradient-to-r from-cyan-600 to-indigo-600 hover:from-cyan-500 hover:to-indigo-500 text-white font-bold text-xs font-mono flex items-center justify-center gap-2 shadow-lg cursor-pointer"
-            >
-              <ClipboardCheck className="w-4 h-4" />
-              <span>Fill Daily Medical Check</span>
-            </button>
-          </div>
-        </div>
+        {/* TAB 5: DOCTOR FORMS & COMMS */}
+        {activeStationTab === 'comms' && (
+          <WorkspaceHub
+            user={user}
+            astronautName={astronautName}
+            missionCode={activeMissionCode}
+            dailyCheckins={dailyCheckins}
+          />
+        )}
       </main>
+
+      {/* Clean NASA Data & References Footer */}
+      <footer className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 mt-8 pt-4 border-t border-slate-900 flex flex-wrap items-center justify-between gap-3 text-xs font-mono text-slate-500">
+        <span>The Vitaluats · HelioMed 100% Offline Deep-Space Station</span>
+        <button
+          type="button"
+          onClick={() => setIsNasaRefOpen(true)}
+          className="px-3 py-1.5 rounded-lg bg-slate-900 hover:bg-slate-800 border border-slate-800 text-cyan-400 hover:text-cyan-300 flex items-center gap-1.5 transition cursor-pointer"
+        >
+          <BookOpen className="w-3.5 h-3.5" />
+          <span>Powered by NASA HRP Data</span>
+        </button>
+      </footer>
 
       {/* Daily Astronaut Self-Check Modal */}
       <DailySelfCheckinModal
@@ -1076,6 +1103,23 @@ export default function App() {
         telemetry={telemetry}
         cabin={cabinEnvironment}
         astronautName={astronautName}
+        evaMode={effectiveEvaMode}
+        onToggleEvaMode={setEvaMode}
+      />
+
+      {/* NASA HRP Data & Citations Modal */}
+      <NasaReferenceModal
+        isOpen={isNasaRefOpen}
+        onClose={() => setIsNasaRefOpen(false)}
+      />
+
+      {/* Official NASA HRP Risk Coverage Matrix Modal */}
+      <NasaRiskMatrixModal
+        isOpen={isRiskMatrixOpen}
+        onClose={() => setIsRiskMatrixOpen(false)}
+        allRisks={allSpecificRisks}
+        evaMode={effectiveEvaMode}
+        onToggleEvaMode={setEvaMode}
       />
     </div>
   );

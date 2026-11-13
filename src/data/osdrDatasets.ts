@@ -18,7 +18,7 @@ export interface OsdrStudyDataset {
   cohortLabel: string;
   environmentId: HabitatEnvironmentId;
   targetRegionId: string;
-  chartTargetIndicator?: 'glucose' | 'onsd' | 'urine_sg';
+  chartTargetIndicator?: 'glucose' | 'onsd' | 'urine_sg' | 'radiation' | 'spo2';
   chartSampleValue?: number;
   plainEnglishFinding: string;
   whyAstronautsCare: string;
@@ -205,6 +205,8 @@ export const NASA_OSDR_DATASETS: OsdrStudyDataset[] = [
     cohortLabel: 'NASA OSDR Space Radiation Biology',
     environmentId: 'spacecraft',
     targetRegionId: 'head_brain',
+    chartTargetIndicator: 'radiation',
+    chartSampleValue: 340,
     plainEnglishFinding:
       'High-energy cosmic rays and solar flare protons damage cell DNA and deplete natural antioxidants unless crew shelter inside water-lined spacecraft walls.',
     whyAstronautsCare:
@@ -280,6 +282,8 @@ export const NASA_OSDR_DATASETS: OsdrStudyDataset[] = [
     cohortLabel: 'NASA OSDR Planetary Surface Toxicology',
     environmentId: 'planetary_base',
     targetRegionId: 'lungs_respiratory',
+    chartTargetIndicator: 'spo2',
+    chartSampleValue: 90,
     plainEnglishFinding:
       'Unlike rounded Earth sand, Moon dust is made of tiny jagged glass shards that scratch lung airways and block oxygen from entering the bloodstream.',
     whyAstronautsCare:

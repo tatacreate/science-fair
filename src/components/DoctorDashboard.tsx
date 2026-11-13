@@ -4,33 +4,33 @@ import { Biometric3DViewer } from './Biometric3DViewer';
 import { INITIAL_MISSIONS, INITIAL_CREW, MissionDefinition, MissionCrewMember } from '../data/missions';
 import { formsStore, ClinicalGoogleForm, SubmittedFormReport } from '../data/formsStore';
 import { createAstronautCheckinForm } from '../utils/workspaceIntegration';
+import { evaluateNasaFiveHazards } from '../data/nasaFiveHazards';
+import { evaluateSpecificNasaRisks } from '../data/nasaHrpRisks';
+import { NasaFiveHazardsWidget } from './NasaFiveHazardsWidget';
+import { NasaReferenceModal } from './NasaReferenceModal';
+import { NasaRiskMatrixModal, SmartRiskPills } from './NasaRiskPillsAndModal';
+import { CansNeutronHudWidget } from './CansNeutronHudWidget';
 import {
   Stethoscope,
   Radio,
   ClipboardCheck,
   AlertTriangle,
-  HeartPulse,
   Plus,
   X,
   LogOut,
   Home,
   CheckCircle2,
   Clock,
-  Shield,
-  Activity,
   User,
   Eye,
-  Sparkles,
   FileSpreadsheet,
   FileCheck,
   Send,
   ExternalLink,
   Zap,
-  Lock,
-  Pill,
-  Flame,
   Check,
-  Users,
+  BookOpen,
+  ShieldCheck,
 } from 'lucide-react';
 
 interface DoctorDashboardProps {
@@ -72,8 +72,11 @@ export const DoctorDashboard: React.FC<DoctorDashboardProps> = ({
   const [selectedReportForReview, setSelectedReportForReview] = useState<SubmittedFormReport | null>(null);
   const [doctorDirectiveInput, setDoctorDirectiveInput] = useState<string>('');
 
-  // Create Mission Modal State
+  // Create Mission Modal State, NASA Reference & Risk Matrix Modal
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
+  const [isNasaRefOpen, setIsNasaRefOpen] = useState(false);
+  const [isRiskMatrixOpen, setIsRiskMatrixOpen] = useState(false);
+  const [evaMode, setEvaMode] = useState(false);
   const [newCode, setNewCode] = useState('');
   const [newName, setNewName] = useState('');
   const [newDestination, setNewDestination] = useState('');
@@ -134,6 +137,58 @@ export const DoctorDashboard: React.FC<DoctorDashboardProps> = ({
   const avgRadiationRate = +(
     currentCrew.reduce((acc, c) => acc + (c.recentVitals.radiationRate || 2.1), 0) / (totalCrew || 1)
   ).toFixed(1);
+
+  const fleetCumulativeDose = Math.max(
+    ...currentCrew.map((c) => c.cumulativeRadiationDoseMsv || 14.2),
+    14.2
+  );
+  const fleetPainAreas = Array.from(new Set(currentCrew.flatMap((c) => c.activePainAreas || [])));
+  const focusCheckin =
+    inspectedAstronaut?.latestCheckin ||
+    currentCrew.find((c) => c.latestCheckin)?.latestCheckin ||
+    null;
+  const fleetFiveHazards = evaluateNasaFiveHazards({
+    telemetry: {
+      timestamp: Date.now(),
+      heartRate: inspectedAstronaut?.recentVitals.heartRate || currentCrew[0]?.recentVitals.heartRate || 72,
+      hrvRmssd: 56,
+      spo2: inspectedAstronaut?.recentVitals.spo2 || currentCrew[0]?.recentVitals.spo2 || 98,
+      coreTemp: 37.0,
+      respiratoryRate: 15,
+      radiationDoseRate: avgRadiationRate,
+      systolicBp: 118,
+      diastolicBp: 76,
+      shockIndex: 0.61,
+      fatigueScore: 25,
+    },
+    cabin: {
+      ambientCO2: 2.3,
+      ambientPressure: 101.3,
+      cabinTemp: 21.8,
+      o2Fraction: 21.2,
+      relativeHumidity: 48,
+      speRadiationFlux: 4.2,
+    },
+    cumulativeDoseMsv: fleetCumulativeDose,
+    latestCheckin: focusCheckin,
+    painAreas: fleetPainAreas,
+    missionCode: currentMission.code,
+  });
+
+  const { activeRisks: fleetActiveSpecificRisks, allRisks: fleetAllSpecificRisks } =
+    evaluateSpecificNasaRisks({
+      heartRate: inspectedAstronaut?.recentVitals.heartRate || currentCrew[0]?.recentVitals.heartRate || 72,
+      spo2: inspectedAstronaut?.recentVitals.spo2 || currentCrew[0]?.recentVitals.spo2 || 98,
+      radiationRate: avgRadiationRate,
+      cumulativeDoseMsv: fleetCumulativeDose,
+      painAreas: fleetPainAreas,
+      sleepQuality: focusCheckin?.sleepQuality,
+      sleepHours: focusCheckin?.sleepHours,
+      mentalHealth: focusCheckin?.mentalHealth,
+      overallFeeling: focusCheckin?.overallFeeling,
+      habitsStrugglingWith: focusCheckin?.habitsStrugglingWith,
+      evaMode: evaMode || Boolean(focusCheckin?.evaMode),
+    });
 
   const handleCreateMission = (e: React.FormEvent) => {
     e.preventDefault();
@@ -205,7 +260,7 @@ export const DoctorDashboard: React.FC<DoctorDashboardProps> = ({
 
     setIsCreatingForm(true);
 
-    let responderUri = `https://docs.google.com/forms/d/e/1FAIpQLS_${Date.now()}/viewform`;
+    let responderUri = '';
 
     // Attempt real Google Forms API integration if user signed into Google Workspace
     try {
@@ -325,16 +380,11 @@ export const DoctorDashboard: React.FC<DoctorDashboardProps> = ({
           <div className="flex items-center gap-3">
             <OrbitautsEmblem size="sm" showSubtitle={false} />
             <div>
-              <div className="flex items-center gap-2">
-                <span className="text-base sm:text-lg font-serif font-black tracking-wider text-amber-400 uppercase">
-                  NASA Flight Surgeon Console
-                </span>
-                <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-amber-950 border border-amber-700/60 text-amber-300 font-bold">
-                  GROUND MEDICAL COMMAND &bull; EARTH
-                </span>
-              </div>
-              <p className="text-xs text-slate-400 font-medium">
-                Deep-Space Multi-Mission Crew Surveillance • Google Form Dispatch Studio &amp; Telemetry Analysis
+              <span className="text-base sm:text-lg font-serif font-black tracking-wider text-amber-400 uppercase block">
+                The Vitaluats · Flight Surgeon Console
+              </span>
+              <p className="text-xs text-slate-400">
+                Ground Medical Command · Google Forms Dispatch &amp; Crew Monitoring
               </p>
             </div>
           </div>
@@ -426,7 +476,7 @@ export const DoctorDashboard: React.FC<DoctorDashboardProps> = ({
 
           <div className="flex items-center gap-3 font-mono text-xs">
             <div className="px-3.5 py-2 rounded-xl bg-slate-950 border border-slate-800 flex items-center gap-2">
-              <Radio className="w-4 h-4 text-amber-400 animate-pulse" />
+              <Radio className="w-4 h-4 text-amber-400" />
               <div>
                 <span className="text-[10px] text-slate-500 block">EARTH COMM LAG</span>
                 <span className="font-bold text-amber-300">{currentMission.earthDelay}</span>
@@ -452,6 +502,43 @@ export const DoctorDashboard: React.FC<DoctorDashboardProps> = ({
             <span>{formCreationSuccess}</span>
           </div>
         )}
+
+        {/* Fleet NASA 5 Hazards Surveillance Monitor */}
+        <NasaFiveHazardsWidget
+          title={`Fleet NASA 5 Hazards Surveillance · ${currentMission.code}`}
+          hazards={fleetFiveHazards}
+        />
+
+        {/* Fleet NASA HRP Specific Risk Alerts + Coverage Matrix Toggle */}
+        <div className="p-4 rounded-2xl bg-slate-900/90 border border-slate-800 space-y-3">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <span className="text-xs font-bold text-slate-100 flex items-center gap-2">
+              <ShieldCheck className="w-4 h-4 text-emerald-400" />
+              <span>Flight Surgeon NASA HRP Specific Risk Monitor</span>
+            </span>
+
+            <button
+              type="button"
+              onClick={() => setIsRiskMatrixOpen(true)}
+              className="px-3 py-1.5 rounded-lg bg-slate-950 hover:bg-slate-800 border border-cyan-700/70 text-cyan-300 font-mono text-xs font-bold transition cursor-pointer flex items-center gap-1.5"
+            >
+              <ShieldCheck className="w-3.5 h-3.5 text-emerald-400" />
+              <span>View NASA HRP Risk Coverage ({fleetAllSpecificRisks.length})</span>
+            </button>
+          </div>
+
+          {fleetActiveSpecificRisks.length > 0 ? (
+            <SmartRiskPills
+              compact
+              title="Active Crew NASA HRP Specific Risks"
+              risks={fleetActiveSpecificRisks}
+            />
+          ) : (
+            <p className="text-xs font-mono text-emerald-400">
+              ✓ All 15 tracked NASA HRP Physiology, Behavioral &amp; Radiation risks nominal for {currentMission.code}.
+            </p>
+          )}
+        </div>
 
         {/* 4 Metric Strips for Quick Crew Status */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
@@ -589,7 +676,7 @@ export const DoctorDashboard: React.FC<DoctorDashboardProps> = ({
                         <span
                           className={`px-2 py-0.5 rounded text-[10px] font-mono font-bold border ${
                             report.aiAnalysis.triageLevel === 'CRITICAL'
-                              ? 'bg-rose-950 border-rose-600 text-rose-300 animate-pulse'
+                              ? 'bg-rose-950 border-rose-600 text-rose-300'
                               : report.aiAnalysis.triageLevel === 'WARNING'
                               ? 'bg-amber-950 border-amber-600 text-amber-300'
                               : report.aiAnalysis.triageLevel === 'ADVISORY'
@@ -664,15 +751,24 @@ export const DoctorDashboard: React.FC<DoctorDashboardProps> = ({
                   </div>
                   <div className="flex items-center justify-between text-[10px] font-mono text-slate-500 pt-1 border-t border-slate-900">
                     <span>Dispatched: {f.createdAt}</span>
-                    <a
-                      href={f.responderUri}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="text-emerald-400 hover:text-emerald-300 flex items-center gap-1 font-semibold"
-                    >
-                      <span>Google Form Link</span>
-                      <ExternalLink className="w-3 h-3" />
-                    </a>
+                    {f.responderUri &&
+                    !f.responderUri.includes('1FAIpQLS_') &&
+                    !f.responderUri.includes('Artemis-Readiness') &&
+                    !f.responderUri.includes('Se-Rad-Survey') ? (
+                      <a
+                        href={f.responderUri}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="text-emerald-400 hover:text-emerald-300 flex items-center gap-1 font-semibold"
+                      >
+                        <span>Google Form Link</span>
+                        <ExternalLink className="w-3 h-3" />
+                      </a>
+                    ) : (
+                      <span className="text-emerald-400 font-semibold">
+                        Active on Capsule Portal
+                      </span>
+                    )}
                   </div>
                 </div>
               ))}
@@ -696,6 +792,14 @@ export const DoctorDashboard: React.FC<DoctorDashboardProps> = ({
               NASA 600 mSv Career Ceiling
             </span>
           </div>
+
+          {/* CANS Active Neutron Spectrometer Fleet Feed */}
+          <CansNeutronHudWidget
+            doseRateUSv={inspectedAstronaut?.recentVitals.radiationRate || avgRadiationRate}
+            cumulativeDoseMsv={
+              inspectedAstronaut?.cumulativeRadiationDoseMsv || fleetCumulativeDose
+            }
+          />
 
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3.5">
             {currentCrew.map((c) => {
@@ -905,8 +1009,14 @@ export const DoctorDashboard: React.FC<DoctorDashboardProps> = ({
                   heartRate={inspectedAstronaut.recentVitals.heartRate}
                   spo2={inspectedAstronaut.recentVitals.spo2}
                   radiationRate={inspectedAstronaut.recentVitals.radiationRate}
+                  cumulativeDoseMsv={inspectedAstronaut.cumulativeRadiationDoseMsv}
                   status={inspectedAstronaut.status}
                   painAreas={inspectedAstronaut.activePainAreas}
+                  sleepQuality={inspectedAstronaut.latestCheckin?.sleepQuality}
+                  mentalHealth={inspectedAstronaut.latestCheckin?.mentalHealth}
+                  overallFeeling={inspectedAstronaut.latestCheckin?.overallFeeling}
+                  habitsStrugglingWith={inspectedAstronaut.latestCheckin?.habitsStrugglingWith}
+                  evaMode={evaMode || Boolean(inspectedAstronaut.latestCheckin?.evaMode)}
                   heightClassName="h-[440px]"
                   title={`3D HOLOGRAM MANNEQUIN - ${inspectedAstronaut.name.toUpperCase()}`}
                   astronautName={inspectedAstronaut.name}
@@ -940,6 +1050,32 @@ export const DoctorDashboard: React.FC<DoctorDashboardProps> = ({
                     </div>
                   </div>
                 </div>
+
+                {(() => {
+                  const { activeRisks } = evaluateSpecificNasaRisks({
+                    heartRate: inspectedAstronaut.recentVitals.heartRate,
+                    spo2: inspectedAstronaut.recentVitals.spo2,
+                    radiationRate: inspectedAstronaut.recentVitals.radiationRate,
+                    cumulativeDoseMsv: inspectedAstronaut.cumulativeRadiationDoseMsv,
+                    painAreas: inspectedAstronaut.activePainAreas,
+                    sleepQuality: inspectedAstronaut.latestCheckin?.sleepQuality,
+                    sleepHours: inspectedAstronaut.latestCheckin?.sleepHours,
+                    mentalHealth: inspectedAstronaut.latestCheckin?.mentalHealth,
+                    overallFeeling: inspectedAstronaut.latestCheckin?.overallFeeling,
+                    habitsStrugglingWith: inspectedAstronaut.latestCheckin?.habitsStrugglingWith,
+                    evaMode: evaMode || Boolean(inspectedAstronaut.latestCheckin?.evaMode),
+                  });
+                  if (activeRisks.length === 0) return null;
+                  return (
+                    <div className="p-4 rounded-xl bg-slate-950 border border-slate-800">
+                      <SmartRiskPills
+                        compact
+                        title={`Flagged NASA HRP Risks · ${inspectedAstronaut.callsign}`}
+                        risks={activeRisks}
+                      />
+                    </div>
+                  );
+                })()}
 
                 {inspectedAstronaut.latestCheckin?.aiFeedback && (
                   <div className="p-4 rounded-xl bg-slate-950 border border-slate-800 space-y-2 text-xs">
@@ -1267,6 +1403,31 @@ export const DoctorDashboard: React.FC<DoctorDashboardProps> = ({
           </div>
         </div>
       )}
+      {/* Clean NASA Data & References Footer */}
+      <footer className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 mt-8 pt-4 border-t border-slate-900 flex flex-wrap items-center justify-between gap-3 text-xs font-mono text-slate-500">
+        <span>The Vitaluats · Ground Flight Surgeon Console</span>
+        <button
+          type="button"
+          onClick={() => setIsNasaRefOpen(true)}
+          className="px-3 py-1.5 rounded-lg bg-slate-900 hover:bg-slate-800 border border-slate-800 text-cyan-400 hover:text-cyan-300 flex items-center gap-1.5 transition cursor-pointer"
+        >
+          <BookOpen className="w-3.5 h-3.5" />
+          <span>Powered by NASA HRP Data</span>
+        </button>
+      </footer>
+
+      <NasaReferenceModal
+        isOpen={isNasaRefOpen}
+        onClose={() => setIsNasaRefOpen(false)}
+      />
+
+      <NasaRiskMatrixModal
+        isOpen={isRiskMatrixOpen}
+        onClose={() => setIsRiskMatrixOpen(false)}
+        allRisks={fleetAllSpecificRisks}
+        evaMode={evaMode}
+        onToggleEvaMode={setEvaMode}
+      />
     </div>
   );
 };

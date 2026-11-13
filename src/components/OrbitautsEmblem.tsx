@@ -1,11 +1,11 @@
 import React from 'react';
 
-interface OrbitautsEmblemProps {
+interface VitaluatsEmblemProps {
   size?: 'sm' | 'md' | 'lg';
   showSubtitle?: boolean;
 }
 
-export const OrbitautsEmblem: React.FC<OrbitautsEmblemProps> = ({ size = 'md', showSubtitle = true }) => {
+export const VitaluatsEmblem: React.FC<VitaluatsEmblemProps> = ({ size = 'md', showSubtitle = true }) => {
   const dimension = size === 'sm' ? 'w-20 h-20' : size === 'lg' ? 'w-44 h-44' : 'w-28 h-28';
 
   return (
@@ -157,7 +157,7 @@ export const OrbitautsEmblem: React.FC<OrbitautsEmblemProps> = ({ size = 'md', s
             strokeWidth="3"
           />
 
-          {/* Banner Text 1: THE ORBITAUTS */}
+          {/* Banner Text 1: THE VITALUATS */}
           <text
             x="200"
             y="330"
@@ -168,7 +168,7 @@ export const OrbitautsEmblem: React.FC<OrbitautsEmblemProps> = ({ size = 'md', s
             letterSpacing="3"
             textAnchor="middle"
           >
-            THE ORBITAUTS
+            THE VITALUATS
           </text>
 
           {/* Subordinate Plate: ORBITAL EXPLORERS */}
@@ -197,17 +197,16 @@ export const OrbitautsEmblem: React.FC<OrbitautsEmblemProps> = ({ size = 'md', s
         <div className="flex flex-col">
           <div className="flex items-center gap-2">
             <span className="text-sm font-serif font-black tracking-widest text-amber-400 uppercase">
-              The Orbitauts
-            </span>
-            <span className="text-[10px] px-1.5 py-0.5 rounded bg-amber-950/70 border border-amber-600/50 text-amber-300 font-mono">
-              EXP-07
+              The Vitaluats
             </span>
           </div>
           <span className="text-xs text-slate-400 font-medium">
-            HelioMed Autonomous Aerospace Biomedical Hub
+            HelioMed Autonomous Medical Hub
           </span>
         </div>
       )}
     </div>
   );
 };
+
+export const OrbitautsEmblem = VitaluatsEmblem;

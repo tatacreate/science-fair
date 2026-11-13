@@ -12,12 +12,16 @@ import {
   X,
 } from 'lucide-react';
 import { ANATOMICAL_REGIONS, AnatomicalRegionInfo } from '../data/nasaHrpKnowledge';
+import { computeSmartHazardTags } from '../data/nasaFiveHazards';
+import { evaluateSpecificNasaRisks } from '../data/nasaHrpRisks';
+import { SmartRiskPills } from './NasaRiskPillsAndModal';
 
 interface Biometric3DViewerProps {
   theme?: 'light' | 'dark';
   heartRate: number; // bpm
   spo2: number; // %
   radiationRate: number; // uSv/h
+  cumulativeDoseMsv?: number;
   status: 'NOMINAL' | 'ADVISORY' | 'WARNING' | 'CRITICAL';
   painAreas?: string[];
   activeScenario?: string;
@@ -26,14 +30,16 @@ interface Biometric3DViewerProps {
   title?: string;
   astronautName?: string;
   selectedRegionId?: string | null;
+  regionFocusNonce?: number;
+  cabinCO2?: number;
+  sleepQuality?: number;
+  mentalHealth?: string;
+  overallFeeling?: string;
+  habitsStrugglingWith?: string[];
+  evaMode?: boolean;
   onRegionSelect?: (regionId: string | null) => void;
   onStartExamForRegion?: (regionId: string) => void;
 }
-
-// Module-scope reusable math objects for zero-GC animation loop
-const _targetCameraPos = new THREE.Vector3(0, 1.25, 3.6);
-const _targetLookAt = new THREE.Vector3(0, 1.0, 0);
-const _worldPosTmp = new THREE.Vector3();
 
 // Map any clicked 3D mesh name to a canonical NASA HRP anatomical region
 function resolveRegionFromMeshName(meshName: string): AnatomicalRegionInfo | null {
@@ -53,6 +59,7 @@ export const Biometric3DViewer: React.FC<Biometric3DViewerProps> = ({
   heartRate,
   spo2,
   radiationRate,
+  cumulativeDoseMsv = 94.2,
   status,
   painAreas = [],
   activeScenario,
@@ -61,6 +68,13 @@ export const Biometric3DViewer: React.FC<Biometric3DViewerProps> = ({
   title,
   astronautName,
   selectedRegionId: controlledRegionId,
+  regionFocusNonce = 0,
+  cabinCO2 = 2.3,
+  sleepQuality = 8,
+  mentalHealth = '',
+  overallFeeling = '',
+  habitsStrugglingWith = [],
+  evaMode = false,
   onRegionSelect,
   onStartExamForRegion,
 }) => {
@@ -69,21 +83,40 @@ export const Biometric3DViewer: React.FC<Biometric3DViewerProps> = ({
   const [isRotating, setIsRotating] = useState<boolean>(true);
   const [cameraPreset, setCameraPreset] = useState<'full' | 'spine' | 'chest' | 'head'>('full');
   const [internalRegionId, setInternalRegionId] = useState<string | null>(null);
+  const [isInspectorOpen, setIsInspectorOpen] = useState<boolean>(false);
   const [hoveredRegionLabel, setHoveredRegionLabel] = useState<string | null>(null);
   const [cursorPointer, setCursorPointer] = useState<boolean>(false);
 
+  // Per-instance camera damping targets (prevents multiple 3D viewers from fighting)
+  const targetCameraPosRef = useRef<THREE.Vector3>(new THREE.Vector3(0, 1.25, 3.6));
+  const targetLookAtRef = useRef<THREE.Vector3>(new THREE.Vector3(0, 1.0, 0));
+  const worldPosTmpRef = useRef<THREE.Vector3>(new THREE.Vector3());
+
   const selectedRegionId =
     controlledRegionId !== undefined ? controlledRegionId : internalRegionId;
+
+  // When an external component (like OSDR Testbench or Routine check) explicitly selects a region, open the inspector
+  useEffect(() => {
+    if (controlledRegionId) {
+      setIsInspectorOpen(true);
+      const region = ANATOMICAL_REGIONS.find((r) => r.id === controlledRegionId);
+      if (region) {
+        setCameraPreset(region.cameraPreset);
+      }
+    }
+  }, [controlledRegionId, regionFocusNonce]);
 
   const selectRegion = (regionId: string | null) => {
     setInternalRegionId(regionId);
     onRegionSelect?.(regionId);
     if (regionId) {
+      setIsInspectorOpen(true);
       const region = ANATOMICAL_REGIONS.find((r) => r.id === regionId);
       if (region) {
         setCameraPreset(region.cameraPreset);
       }
     } else {
+      setIsInspectorOpen(false);
       setCameraPreset('full');
     }
   };
@@ -494,6 +527,7 @@ export const Biometric3DViewer: React.FC<Biometric3DViewerProps> = ({
     let lastHoverCheck = 0;
 
     const handlePointerDown = (e: MouseEvent) => {
+      if (e.target !== renderer.domElement) return;
       isDragging = true;
       pointerDownPos = { x: e.clientX, y: e.clientY };
       prevMouseX = e.clientX;
@@ -508,7 +542,10 @@ export const Biometric3DViewer: React.FC<Biometric3DViewerProps> = ({
         prevMouseY = e.clientY;
 
         humanBodyGroup.rotation.y += deltaX * 0.008;
-        camera.position.y = Math.max(0.3, Math.min(2.5, camera.position.y - deltaY * 0.005));
+        targetCameraPosRef.current.y = Math.max(
+          0.35,
+          Math.min(2.4, targetCameraPosRef.current.y - deltaY * 0.004)
+        );
         return;
       }
 
@@ -522,8 +559,12 @@ export const Biometric3DViewer: React.FC<Biometric3DViewerProps> = ({
         e.clientX < rect.left ||
         e.clientX > rect.right ||
         e.clientY < rect.top ||
-        e.clientY > rect.bottom
+        e.clientY > rect.bottom ||
+        e.target !== renderer.domElement
       ) {
+        hoveredMeshRef.current = null;
+        setHoveredRegionLabel(null);
+        setCursorPointer(false);
         return;
       }
 
@@ -547,13 +588,16 @@ export const Biometric3DViewer: React.FC<Biometric3DViewerProps> = ({
     };
 
     const handlePointerUp = (e: MouseEvent) => {
+      // Only handle pointer-up if the interaction actually started on the 3D WebGL canvas
+      if (!isDragging) return;
+      isDragging = false;
+
       const movedDist = Math.hypot(
         e.clientX - pointerDownPos.x,
         e.clientY - pointerDownPos.y
       );
-      isDragging = false;
 
-      // Treat short click (<6px drag) as anatomical part selection
+      // Treat short click (<6px drag) directly on canvas as anatomical part selection
       if (movedDist < 6) {
         const rect = renderer.domElement.getBoundingClientRect();
         mouse.x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
@@ -621,13 +665,15 @@ export const Biometric3DViewer: React.FC<Biometric3DViewerProps> = ({
       leftLung.scale.set(0.8 * lungScale, 1.35 * lungScale, 0.7 * lungScale);
       rightLung.scale.set(0.8 * lungScale, 1.35 * lungScale, 0.7 * lungScale);
 
-      // Pain hazard evaluation
+      // Pain & scenario hazard evaluation
       const isSpineInPain = pAreas.some((a) => /spine|lumbar|back/i.test(a));
+      const isAbdomenInPain = pAreas.some((a) => /abdomen|stomach|kidney|renal|nausea|gi/i.test(a));
       const isHeadInPain = pAreas.some((a) => /head|brain/i.test(a));
       const isNeckInPain = pAreas.some((a) => /neck/i.test(a));
       const isJointsInPain = pAreas.some((a) => /joint|knee|hip|elbow/i.test(a));
       const isShouldersInPain = pAreas.some((a) => /shoulder/i.test(a));
       const isEyesInPain = pAreas.some((a) => /eye/i.test(a));
+      const activeScenarioId = telemetryRef.current.activeScenario;
 
       const hazardPulse = (Math.sin(elapsed * 4.5) + 1) * 0.5;
       const activeRegionObj = activeRegId
@@ -639,8 +685,8 @@ export const Biometric3DViewer: React.FC<Biometric3DViewerProps> = ({
         const anchorMesh = anatomicalMeshMap.get(activeRegionObj.meshNames[0]);
         if (anchorMesh) {
           selectionRing.visible = true;
-          _worldPosTmp.copy(anchorMesh.position);
-          selectionRing.position.set(0, _worldPosTmp.y, 0);
+          worldPosTmpRef.current.copy(anchorMesh.position);
+          selectionRing.position.set(0, worldPosTmpRef.current.y, 0);
           const ringScale =
             activeRegionObj.id === 'head_brain' || activeRegionObj.id === 'eyes_ocular'
               ? 0.75
@@ -657,12 +703,16 @@ export const Biometric3DViewer: React.FC<Biometric3DViewerProps> = ({
         const mat = mesh.material as THREE.MeshStandardMaterial | THREE.MeshPhysicalMaterial;
         let isHazard = false;
 
-        if (name === 'lower_back' || name === 'abdomen') {
+        if (name === 'lower_back') {
           isHazard = isSpineInPain;
+        } else if (name === 'abdomen') {
+          isHazard = isAbdomenInPain || activeScenarioId === 'osdr-511-test' || activeScenarioId === 'osdr-102-test';
         } else if (name === 'head') {
-          isHazard = isHeadInPain;
+          isHazard = isHeadInPain || activeScenarioId === 'osdr-352-test';
         } else if (name === 'left_eye' || name === 'right_eye') {
-          isHazard = isEyesInPain;
+          isHazard = isEyesInPain || activeScenarioId === 'osdr-484-test';
+        } else if (name === 'left_lung' || name === 'right_lung') {
+          isHazard = activeScenarioId === 'osdr-630-test';
         } else if (name === 'neck') {
           isHazard = isNeckInPain;
         } else if (name.includes('shoulder')) {
@@ -767,10 +817,10 @@ export const Biometric3DViewer: React.FC<Biometric3DViewerProps> = ({
       }
 
       // Smooth camera damping
-      camera.position.x = THREE.MathUtils.damp(camera.position.x, _targetCameraPos.x, 3.5, delta);
-      camera.position.y = THREE.MathUtils.damp(camera.position.y, _targetCameraPos.y, 3.5, delta);
-      camera.position.z = THREE.MathUtils.damp(camera.position.z, _targetCameraPos.z, 3.5, delta);
-      camera.lookAt(_targetLookAt);
+      camera.position.x = THREE.MathUtils.damp(camera.position.x, targetCameraPosRef.current.x, 3.5, delta);
+      camera.position.y = THREE.MathUtils.damp(camera.position.y, targetCameraPosRef.current.y, 3.5, delta);
+      camera.position.z = THREE.MathUtils.damp(camera.position.z, targetCameraPosRef.current.z, 3.5, delta);
+      camera.lookAt(targetLookAtRef.current);
 
       renderer.render(scene, camera);
     };
@@ -809,26 +859,25 @@ export const Biometric3DViewer: React.FC<Biometric3DViewerProps> = ({
   // Camera presets
   useEffect(() => {
     if (cameraPreset === 'full') {
-      _targetCameraPos.set(0, 1.25, 3.6);
-      _targetLookAt.set(0, 1.0, 0);
+      targetCameraPosRef.current.set(0, 1.25, 3.6);
+      targetLookAtRef.current.set(0, 1.0, 0);
     } else if (cameraPreset === 'spine') {
-      _targetCameraPos.set(0, 1.15, -2.2);
-      _targetLookAt.set(0, 1.05, 0);
+      targetCameraPosRef.current.set(0, 1.15, -2.2);
+      targetLookAtRef.current.set(0, 1.05, 0);
     } else if (cameraPreset === 'chest') {
-      _targetCameraPos.set(0, 1.25, 1.85);
-      _targetLookAt.set(0, 1.22, 0);
+      targetCameraPosRef.current.set(0, 1.25, 1.85);
+      targetLookAtRef.current.set(0, 1.22, 0);
     } else if (cameraPreset === 'head') {
-      _targetCameraPos.set(0, 1.72, 1.35);
-      _targetLookAt.set(0, 1.66, 0);
+      targetCameraPosRef.current.set(0, 1.72, 1.35);
+      targetLookAtRef.current.set(0, 1.66, 0);
     }
   }, [cameraPreset]);
 
-  // Determine displayed anatomical inspection region (clicked part OR auto-matched reported pain)
-  const selectedRegion: AnatomicalRegionInfo | null = selectedRegionId
-    ? ANATOMICAL_REGIONS.find((r) => r.id === selectedRegionId) || null
-    : painAreas.length > 0
-    ? ANATOMICAL_REGIONS.find((r) => r.painAreaMatch.test(painAreas[0])) || null
-    : null;
+  // Only show the floating inspector card when explicitly open (via clicking 3D body or quick strip)
+  const selectedRegion: AnatomicalRegionInfo | null =
+    isInspectorOpen && selectedRegionId
+      ? ANATOMICAL_REGIONS.find((r) => r.id === selectedRegionId) || null
+      : null;
 
   const isRegionInPain = selectedRegion
     ? painAreas.some((area) => selectedRegion.painAreaMatch.test(area))
@@ -836,13 +885,43 @@ export const Biometric3DViewer: React.FC<Biometric3DViewerProps> = ({
 
   // Dynamic live status evaluation for the selected region
   const getRegionLiveStatus = (region: AnatomicalRegionInfo): { label: string; colorClass: string } => {
+    if (activeScenario === 'osdr-511-test' && (region.id === 'abdomen_renal' || region.id === 'heart_cardio')) {
+      return {
+        label: 'OSD-511: METABOLIC DRIFT (WATCH)',
+        colorClass: 'bg-amber-950 border-amber-600 text-amber-300',
+      };
+    }
+    if (activeScenario === 'osdr-484-test' && region.id === 'eyes_ocular') {
+      return {
+        label: 'OSD-484: SANS NERVE SWELLING',
+        colorClass: 'bg-rose-950 border-rose-600 text-rose-300',
+      };
+    }
+    if (activeScenario === 'osdr-352-test' && region.id === 'head_brain') {
+      return {
+        label: 'OSD-352: SOLAR RADIATION ALERT',
+        colorClass: 'bg-rose-950 border-rose-600 text-rose-300',
+      };
+    }
+    if (activeScenario === 'osdr-630-test' && region.id === 'lungs_respiratory') {
+      return {
+        label: 'OSD-630: DUST / LOW O2 ALERT',
+        colorClass: 'bg-rose-950 border-rose-600 text-rose-300',
+      };
+    }
+    if (activeScenario === 'osdr-102-test' && (region.id === 'spine_lumbar' || region.id === 'abdomen_renal')) {
+      return {
+        label: 'OSD-102: DEHYDRATION / STONE RISK',
+        colorClass: 'bg-amber-950 border-amber-600 text-amber-300',
+      };
+    }
     if (painAreas.some((a) => region.painAreaMatch.test(a))) {
       return {
         label: 'PAIN HAZARD REPORTED',
         colorClass: 'bg-rose-950 border-rose-600 text-rose-300',
       };
     }
-    if (region.id === 'heart_cardio' && (heartRate > 100 || heartRate < 50)) {
+    if (region.id === 'heart_cardio' && (heartRate > 94 || heartRate < 50)) {
       return {
         label: 'ELEVATED CARDIAC STRAIN',
         colorClass: 'bg-amber-950 border-amber-600 text-amber-300',
@@ -984,6 +1063,76 @@ export const Biometric3DViewer: React.FC<Biometric3DViewerProps> = ({
                     {selectedRegion.preventativeActions[0]}
                   </p>
                 </div>
+
+                {/* Smart NASA 5 Hazards Tagging */}
+                {(() => {
+                  const smartTags = computeSmartHazardTags({
+                    painAreas,
+                    sleepQuality,
+                    mentalHealth,
+                    ambientCO2: cabinCO2,
+                    spo2,
+                    radiationRate,
+                    activeScenarioId: activeScenario,
+                    regionId: selectedRegion.id,
+                  });
+                  const { activeRisks } = evaluateSpecificNasaRisks({
+                    heartRate,
+                    spo2,
+                    radiationRate,
+                    cumulativeDoseMsv,
+                    ambientCO2: cabinCO2,
+                    painAreas,
+                    sleepQuality,
+                    mentalHealth,
+                    overallFeeling,
+                    habitsStrugglingWith,
+                    evaMode,
+                    activeScenarioId: activeScenario,
+                    selectedRegionId: selectedRegion.id,
+                  });
+                  const regionRisks = activeRisks.filter(
+                    (r) => !r.spec.linkedRegionId || r.spec.linkedRegionId === selectedRegion.id
+                  );
+
+                  return (
+                    <div className="space-y-2">
+                      {regionRisks.length > 0 && (
+                        <div className="p-2.5 rounded-lg bg-slate-950 border border-slate-800">
+                          <SmartRiskPills
+                            compact
+                            title={`NASA HRP Specific Risks · ${selectedRegion.shortLabel}`}
+                            risks={regionRisks}
+                          />
+                        </div>
+                      )}
+
+                      {smartTags.length > 0 && (
+                        <div className="p-2.5 rounded-lg bg-slate-950 border border-slate-800 space-y-1.5">
+                          <span className="text-[10px] font-mono uppercase text-cyan-400 font-semibold block">
+                            NASA HRP Hazard Match:
+                          </span>
+                          <div className="flex flex-wrap gap-1.5">
+                            {smartTags.map((tag) => (
+                              <span
+                                key={tag.hazardId}
+                                className={`px-2 py-0.5 rounded text-[10px] font-mono font-bold border ${
+                                  tag.status === 'RED'
+                                    ? 'bg-rose-950 border-rose-600 text-rose-300'
+                                    : tag.status === 'AMBER'
+                                    ? 'bg-amber-950 border-amber-600 text-amber-300'
+                                    : 'bg-emerald-950 border-emerald-700 text-emerald-300'
+                                }`}
+                              >
+                                [{tag.tagLabel}]
+                              </span>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })()}
               </div>
 
               {onStartExamForRegion && (
@@ -1101,6 +1250,35 @@ export const Biometric3DViewer: React.FC<Biometric3DViewerProps> = ({
           })}
         </div>
       </div>
+
+      {/* Live Anomaly NASA HRP Specific Risk Badges Strip */}
+      {(() => {
+        const { activeRisks } = evaluateSpecificNasaRisks({
+          heartRate,
+          spo2,
+          radiationRate,
+          cumulativeDoseMsv,
+          ambientCO2: cabinCO2,
+          painAreas,
+          sleepQuality,
+          mentalHealth,
+          overallFeeling,
+          habitsStrugglingWith,
+          evaMode,
+          activeScenarioId: activeScenario,
+          selectedRegionId,
+        });
+        if (activeRisks.length === 0) return null;
+        return (
+          <div className="bg-slate-900/90 border border-slate-800 rounded-xl p-3">
+            <SmartRiskPills
+              title="Active NASA HRP Specific Risk Alerts (Click Pill to Expand)"
+              risks={activeRisks}
+              onInspectRegion={(regId) => selectRegion(regId)}
+            />
+          </div>
+        );
+      })()}
     </div>
   );
 };

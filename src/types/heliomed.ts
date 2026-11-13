@@ -25,6 +25,7 @@ export interface DailyCheckin {
   painNotes: string;
   habitsToImprove: string[];
   habitsStrugglingWith: string[];
+  evaMode?: boolean;
   aiFeedback?: string;
   createdAt: string;
 }

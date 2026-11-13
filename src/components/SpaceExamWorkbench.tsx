@@ -39,7 +39,7 @@ interface SpaceExamWorkbenchProps {
   onSelectRegion: (regionId: string) => void;
   onUpdateVitals?: (updates: { systolicBp?: number }) => void;
   onExamLogged?: (indicatorId: string, numericValue: number | null) => void;
-  activeTabOverride?: 'keyboard' | 'mouse' | 'camera' | 'guide' | null;
+  activeTabRequest?: { tab: 'keyboard' | 'mouse' | 'camera' | 'guide'; nonce: number } | null;
 }
 
 const STORAGE_EXAM_LOG_KEY = 'heliomed_offline_exam_logs';
@@ -78,15 +78,16 @@ export const SpaceExamWorkbench: React.FC<SpaceExamWorkbenchProps> = ({
   onSelectRegion,
   onUpdateVitals,
   onExamLogged,
-  activeTabOverride,
+  activeTabRequest,
 }) => {
   const [activeTab, setActiveTab] = useState<'keyboard' | 'mouse' | 'camera' | 'guide'>('keyboard');
+  const [saveToast, setSaveToast] = useState<string | null>(null);
 
   useEffect(() => {
-    if (activeTabOverride) {
-      setActiveTab(activeTabOverride);
+    if (activeTabRequest?.tab) {
+      setActiveTab(activeTabRequest.tab);
     }
-  }, [activeTabOverride]);
+  }, [activeTabRequest]);
 
   // ------------------------------------------------------------------
   // 1. KEYBOARD NUMERIC EXAM STATE
@@ -335,6 +336,24 @@ export const SpaceExamWorkbench: React.FC<SpaceExamWorkbenchProps> = ({
     };
   }, [activeTab]);
 
+  // Attach active MediaStream after <video> mounts inside isCameraActive branch
+  useEffect(() => {
+    if (isCameraActive && videoRef.current && streamRef.current) {
+      videoRef.current.srcObject = streamRef.current;
+      videoRef.current.play().catch(() => {
+        // ignore autoplay interruption
+      });
+    }
+  }, [isCameraActive]);
+
+  const stopSpacecraftCamera = () => {
+    if (streamRef.current) {
+      streamRef.current.getTracks().forEach((t) => t.stop());
+      streamRef.current = null;
+    }
+    setIsCameraActive(false);
+  };
+
   const startSpacecraftCamera = async () => {
     setCameraError(null);
     if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
@@ -345,10 +364,6 @@ export const SpaceExamWorkbench: React.FC<SpaceExamWorkbenchProps> = ({
       const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
       streamRef.current = stream;
       setIsCameraActive(true);
-      if (videoRef.current) {
-        videoRef.current.srcObject = stream;
-        await videoRef.current.play();
-      }
     } catch {
       setCameraError('Camera access denied or no spacecraft webcam attached. You can upload an image file or measure calibrated scans below.');
       setIsCameraActive(false);
@@ -366,12 +381,7 @@ export const SpaceExamWorkbench: React.FC<SpaceExamWorkbenchProps> = ({
     setLoadedSampleName('Live Spacecraft Camera Capture');
     setCaliperPoints([]);
     computeCanvasStats();
-
-    if (streamRef.current) {
-      streamRef.current.getTracks().forEach((t) => t.stop());
-      streamRef.current = null;
-    }
-    setIsCameraActive(false);
+    stopSpacecraftCamera();
   };
 
   const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -476,6 +486,8 @@ export const SpaceExamWorkbench: React.FC<SpaceExamWorkbenchProps> = ({
       recommendation: evaluation.action,
     });
     onExamLogged?.(activeSpec.id, currentNumericValue);
+    setSaveToast(`Saved ${activeSpec.label} (${currentNumericValue} ${activeSpec.unit}) to Onboard Record (+25 XP)`);
+    setTimeout(() => setSaveToast(null), 4000);
   };
 
   const handleLogAmslerExam = () => {
@@ -490,6 +502,8 @@ export const SpaceExamWorkbench: React.FC<SpaceExamWorkbenchProps> = ({
       recommendation: amslerEvaluation.action,
     });
     onExamLogged?.('amsler_grid', distortedCellCount);
+    setSaveToast(`Saved Amsler Grid & Symptom Screen (${distortedCellCount}/100 distorted) (+25 XP)`);
+    setTimeout(() => setSaveToast(null), 4000);
   };
 
   const handleLogImageMeasurement = () => {
@@ -523,6 +537,8 @@ export const SpaceExamWorkbench: React.FC<SpaceExamWorkbenchProps> = ({
       recommendation,
     });
     onExamLogged?.(loadedSampleName.includes('ONSD') ? 'onsd' : 'camera_scan', mm);
+    setSaveToast(`Saved Scan (${mm !== null ? `${mm} mm` : loadedSampleName}) to Onboard Record (+25 XP)`);
+    setTimeout(() => setSaveToast(null), 4000);
   };
 
   const activeBadge = getAttentionBadgeStyle(evaluation.level);
@@ -600,6 +616,13 @@ export const SpaceExamWorkbench: React.FC<SpaceExamWorkbenchProps> = ({
           </button>
         </div>
       </div>
+
+      {saveToast && (
+        <div className="p-3 rounded-xl bg-emerald-950/90 border border-emerald-600 text-emerald-200 text-xs font-mono flex items-center gap-2">
+          <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+          <span>{saveToast}</span>
+        </div>
+      )}
 
       {/* TAB 1: KEYBOARD NUMERIC LAB ENTRY */}
       {activeTab === 'keyboard' && (
@@ -968,13 +991,22 @@ export const SpaceExamWorkbench: React.FC<SpaceExamWorkbenchProps> = ({
                   muted
                   playsInline
                 />
-                <button
-                  type="button"
-                  onClick={captureCameraFrame}
-                  className="w-full py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white font-mono text-xs font-bold cursor-pointer"
-                >
-                  Capture Frame to Diagnostic Analyzer
-                </button>
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={captureCameraFrame}
+                    className="flex-1 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white font-mono text-xs font-bold cursor-pointer"
+                  >
+                    Capture Frame to Diagnostic Analyzer
+                  </button>
+                  <button
+                    type="button"
+                    onClick={stopSpacecraftCamera}
+                    className="px-4 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 font-mono text-xs cursor-pointer"
+                  >
+                    Close Camera
+                  </button>
+                </div>
               </div>
             )}
 
@@ -1108,14 +1140,30 @@ export const SpaceExamWorkbench: React.FC<SpaceExamWorkbenchProps> = ({
               )}
             </div>
 
-            <button
-              type="button"
-              onClick={handleLogImageMeasurement}
-              className="w-full py-2.5 px-4 rounded-xl bg-cyan-600 hover:bg-cyan-500 text-white font-mono text-xs font-bold flex items-center justify-center gap-2 transition-colors cursor-pointer"
-            >
-              <Save className="w-4 h-4" />
-              <span>Save Scan Measurement to Onboard Record</span>
-            </button>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={handleLogImageMeasurement}
+                className="flex-1 py-2.5 px-4 rounded-xl bg-cyan-600 hover:bg-cyan-500 text-white font-mono text-xs font-bold flex items-center justify-center gap-2 transition-colors cursor-pointer"
+              >
+                <Save className="w-4 h-4" />
+                <span>Save Scan Measurement to Onboard Record</span>
+              </button>
+
+              {caliperPoints.length > 0 && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setCaliperPoints([]);
+                    setImageAnalysisMetrics((m) => ({ ...m, measuredMm: null }));
+                  }}
+                  className="px-3 py-2.5 rounded-xl bg-slate-900 hover:bg-slate-800 border border-slate-700 text-slate-300 font-mono text-xs cursor-pointer flex items-center gap-1.5"
+                >
+                  <RotateCcw className="w-3.5 h-3.5" />
+                  <span>Clear Caliper</span>
+                </button>
+              )}
+            </div>
           </div>
         </div>
       )}

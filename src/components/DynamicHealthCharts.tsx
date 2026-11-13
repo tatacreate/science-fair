@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { INDICATOR_SIMPLE_GUIDES } from '../data/habitatEnvironments';
 import {
   TrendingUp,
@@ -205,6 +205,7 @@ interface DynamicHealthChartsProps {
   customLoggedSeries: Partial<Record<TrackedChartIndicatorId, ChartDataPoint[]>>;
   liveHrHistory: ChartDataPoint[];
   liveRadHistory: ChartDataPoint[];
+  activeChartRequest?: { id: TrackedChartIndicatorId; nonce: number } | null;
 }
 
 export const DynamicHealthCharts: React.FC<DynamicHealthChartsProps> = ({
@@ -214,20 +215,30 @@ export const DynamicHealthCharts: React.FC<DynamicHealthChartsProps> = ({
   customLoggedSeries,
   liveHrHistory,
   liveRadHistory,
+  activeChartRequest,
 }) => {
   const [selectedChartId, setSelectedChartId] = useState<TrackedChartIndicatorId>('glucose');
   const [hoveredIndex, setHoveredIndex] = useState<number | null>(null);
   const [showSimpleGuide, setShowSimpleGuide] = useState<boolean>(true);
 
+  useEffect(() => {
+    if (activeChartRequest?.id) {
+      setSelectedChartId(activeChartRequest.id);
+      setHoveredIndex(null);
+    }
+  }, [activeChartRequest]);
+
   const activeConfig =
     CHART_CONFIGS.find((c) => c.id === selectedChartId) || CHART_CONFIGS[0];
 
   const getSeriesForConfig = (cfg: ChartConfig): ChartDataPoint[] => {
-    if (cfg.id === 'heart_rate' && liveHrHistory.length > 0) {
-      return [...cfg.defaultSeries.slice(0, 4), ...liveHrHistory.slice(-6)];
+    if (cfg.id === 'heart_rate') {
+      const base = liveHrHistory.length > 0 ? liveHrHistory.slice(-5) : cfg.defaultSeries.slice(0, 5);
+      return [...cfg.defaultSeries.slice(0, 2), ...base, { label: 'Now', value: liveHeartRate }];
     }
-    if (cfg.id === 'radiation' && liveRadHistory.length > 0) {
-      return [...cfg.defaultSeries.slice(0, 4), ...liveRadHistory.slice(-6)];
+    if (cfg.id === 'radiation') {
+      const base = liveRadHistory.length > 0 ? liveRadHistory.slice(-5) : cfg.defaultSeries.slice(0, 5);
+      return [...cfg.defaultSeries.slice(0, 2), ...base, { label: 'Now', value: liveRadiationRate }];
     }
     if (cfg.id === 'spo2') {
       return [...cfg.defaultSeries.slice(0, 5), { label: 'Live', value: liveSpo2 }];
