@@ -24,7 +24,7 @@ import {
   SimulationScenario,
   TriageLevel,
 } from './types/heliomed';
-import { VitaluatsEmblem } from './components/OrbitautsEmblem';
+import { HelioMedEmblem } from './components/OrbitautsEmblem';
 import { Biometric3DViewer } from './components/Biometric3DViewer';
 import { TelemetryVitalsGrid } from './components/TelemetryVitalsGrid';
 import { WorkspaceHub } from './components/WorkspaceHub';
@@ -685,10 +685,10 @@ export default function App() {
         <div className="max-w-7xl mx-auto flex flex-wrap items-center justify-between gap-4">
           {/* Brand Zone */}
           <div className="flex items-center gap-3 shrink-0">
-            <VitaluatsEmblem size="sm" showSubtitle={false} />
+            <HelioMedEmblem size="sm" showSubtitle={false} />
             <div>
               <h1 className="text-base sm:text-lg font-serif font-black tracking-wider text-amber-400 uppercase whitespace-nowrap">
-                The Vitaluats
+                HelioMed
               </h1>
               <p className="text-[11px] font-mono text-slate-400 whitespace-nowrap">
                 {activeMissionCode} · {astronautName}
@@ -1083,7 +1083,7 @@ export default function App() {
 
       {/* Clean NASA Data & References Footer */}
       <footer className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 mt-8 pt-4 border-t border-slate-900 flex flex-wrap items-center justify-between gap-3 text-xs font-mono text-slate-500">
-        <span>The Vitaluats · HelioMed 100% Offline Deep-Space Station</span>
+        <span>HelioMed · 100% Offline Deep-Space Station</span>
         <button
           type="button"
           onClick={() => setIsNasaRefOpen(true)}

@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { OrbitautsEmblem } from './OrbitautsEmblem';
+import { HelioMedEmblem } from './OrbitautsEmblem';
 import { Biometric3DViewer } from './Biometric3DViewer';
 import { INITIAL_MISSIONS, INITIAL_CREW, MissionDefinition, MissionCrewMember } from '../data/missions';
 import { formsStore, ClinicalGoogleForm, SubmittedFormReport } from '../data/formsStore';
@@ -378,10 +378,10 @@ export const DoctorDashboard: React.FC<DoctorDashboardProps> = ({
       <header className="sticky top-0 z-40 bg-slate-950/95 border-b border-slate-800 backdrop-blur-md px-4 sm:px-6 lg:px-8 py-3">
         <div className="max-w-7xl mx-auto flex flex-col md:flex-row md:items-center justify-between gap-4">
           <div className="flex items-center gap-3">
-            <OrbitautsEmblem size="sm" showSubtitle={false} />
+            <HelioMedEmblem size="sm" showSubtitle={false} />
             <div>
               <span className="text-base sm:text-lg font-serif font-black tracking-wider text-amber-400 uppercase block">
-                The Vitaluats · Flight Surgeon Console
+                HelioMed · Flight Surgeon Console
               </span>
               <p className="text-xs text-slate-400">
                 Ground Medical Command · Google Forms Dispatch &amp; Crew Monitoring
@@ -1405,7 +1405,7 @@ export const DoctorDashboard: React.FC<DoctorDashboardProps> = ({
       )}
       {/* Clean NASA Data & References Footer */}
       <footer className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 mt-8 pt-4 border-t border-slate-900 flex flex-wrap items-center justify-between gap-3 text-xs font-mono text-slate-500">
-        <span>The Vitaluats · Ground Flight Surgeon Console</span>
+        <span>HelioMed · Ground Flight Surgeon Console</span>
         <button
           type="button"
           onClick={() => setIsNasaRefOpen(true)}

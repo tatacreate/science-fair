@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { VitaluatsEmblem } from './OrbitautsEmblem';
+import { HelioMedEmblem } from './OrbitautsEmblem';
 import { Biometric3DViewer } from './Biometric3DViewer';
 import { NasaReferenceModal } from './NasaReferenceModal';
 import { INITIAL_MISSIONS, INITIAL_CREW } from '../data/missions';
@@ -50,9 +50,9 @@ export const SignInIntroPage: React.FC<SignInIntroPageProps> = ({
         <header className="border-b border-slate-800 bg-slate-950/95 px-6 py-3.5">
           <div className="max-w-7xl mx-auto flex items-center justify-between gap-8">
             <div className="flex items-center gap-3 shrink-0">
-              <VitaluatsEmblem size="sm" showSubtitle={false} />
+              <HelioMedEmblem size="sm" showSubtitle={false} />
               <span className="text-lg font-serif font-black tracking-wider text-amber-400 uppercase whitespace-nowrap">
-                The Vitaluats
+                HelioMed
               </span>
             </div>
 
@@ -145,7 +145,7 @@ export const SignInIntroPage: React.FC<SignInIntroPageProps> = ({
         {/* Footer */}
         <footer className="border-t border-slate-900 bg-slate-950 py-5 px-6 text-xs text-slate-500 font-mono">
           <div className="max-w-7xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-2">
-            <span>The Vitaluats · HelioMed Autonomous Medical Station</span>
+            <span>HelioMed · Autonomous Medical Station</span>
             <button
               type="button"
               onClick={() => setIsNasaRefOpen(true)}
@@ -173,9 +173,9 @@ export const SignInIntroPage: React.FC<SignInIntroPageProps> = ({
       <header className="border-b border-slate-800 bg-slate-950/95 px-6 py-3.5 sticky top-0 z-30">
         <div className="max-w-7xl mx-auto flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <VitaluatsEmblem size="sm" showSubtitle={false} />
+            <HelioMedEmblem size="sm" showSubtitle={false} />
             <span className="text-base font-serif font-black tracking-wider text-amber-400 uppercase whitespace-nowrap">
-              The Vitaluats · Access
+              HelioMed · Access
             </span>
           </div>
 
@@ -369,7 +369,7 @@ export const SignInIntroPage: React.FC<SignInIntroPageProps> = ({
 
       <footer className="border-t border-slate-900 bg-slate-950 py-4 px-6 text-xs text-slate-500 font-mono">
         <div className="max-w-7xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-2">
-          <span>The Vitaluats · HelioMed Station</span>
+          <span>HelioMed · Autonomous Deep-Space Station</span>
           <button
             type="button"
             onClick={() => setIsNasaRefOpen(true)}

@@ -1,11 +1,11 @@
 import React from 'react';
 
-interface VitaluatsEmblemProps {
+export interface HelioMedEmblemProps {
   size?: 'sm' | 'md' | 'lg';
   showSubtitle?: boolean;
 }
 
-export const VitaluatsEmblem: React.FC<VitaluatsEmblemProps> = ({ size = 'md', showSubtitle = true }) => {
+export const HelioMedEmblem: React.FC<HelioMedEmblemProps> = ({ size = 'md', showSubtitle = true }) => {
   const dimension = size === 'sm' ? 'w-20 h-20' : size === 'lg' ? 'w-44 h-44' : 'w-28 h-28';
 
   return (
@@ -157,7 +157,7 @@ export const VitaluatsEmblem: React.FC<VitaluatsEmblemProps> = ({ size = 'md', s
             strokeWidth="3"
           />
 
-          {/* Banner Text 1: THE VITALUATS */}
+          {/* Banner Text 1: HELIOMED */}
           <text
             x="200"
             y="330"
@@ -168,10 +168,10 @@ export const VitaluatsEmblem: React.FC<VitaluatsEmblemProps> = ({ size = 'md', s
             letterSpacing="3"
             textAnchor="middle"
           >
-            THE VITALUATS
+            HELIOMED
           </text>
 
-          {/* Subordinate Plate: ORBITAL EXPLORERS */}
+          {/* Subordinate Plate: AUTONOMOUS HEALTH */}
           <path
             d="M 120,345 Q 200,365 280,345 L 285,365 Q 200,388 115,365 Z"
             fill="#451a03"
@@ -188,7 +188,7 @@ export const VitaluatsEmblem: React.FC<VitaluatsEmblemProps> = ({ size = 'md', s
             letterSpacing="2"
             textAnchor="middle"
           >
-            ORBITAL EXPLORERS
+            DEEP SPACE CLINICAL
           </text>
         </svg>
       </div>
@@ -197,11 +197,11 @@ export const VitaluatsEmblem: React.FC<VitaluatsEmblemProps> = ({ size = 'md', s
         <div className="flex flex-col">
           <div className="flex items-center gap-2">
             <span className="text-sm font-serif font-black tracking-widest text-amber-400 uppercase">
-              The Vitaluats
+              HelioMed
             </span>
           </div>
           <span className="text-xs text-slate-400 font-medium">
-            HelioMed Autonomous Medical Hub
+            Autonomous Medical Station
           </span>
         </div>
       )}
@@ -209,4 +209,5 @@ export const VitaluatsEmblem: React.FC<VitaluatsEmblemProps> = ({ size = 'md', s
   );
 };
 
-export const OrbitautsEmblem = VitaluatsEmblem;
+export const VitaluatsEmblem = HelioMedEmblem;
+export const OrbitautsEmblem = HelioMedEmblem;
