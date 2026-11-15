@@ -45,8 +45,8 @@ export const TelemetryVitalsGrid: React.FC<TelemetryVitalsGridProps> = ({
             Live Body &amp; Cabin Vitals
           </h2>
         </div>
-        <span className="text-xs font-mono text-emerald-400">
-          Offline Sensors Active
+        <span className="text-xs font-mono text-cyan-400">
+          Simulated Telemetry · Offline
         </span>
       </div>
 
@@ -156,7 +156,7 @@ export const TelemetryVitalsGrid: React.FC<TelemetryVitalsGridProps> = ({
             <span className="font-medium flex items-center gap-1.5">
               <Gauge className="w-4 h-4 text-emerald-400" /> Cabin CO₂
             </span>
-            <span className="font-mono text-[11px] text-slate-400">mmHg</span>
+            <span className="font-mono text-[11px] text-slate-400">% / mmHg</span>
           </div>
           <div className="my-2 flex items-baseline gap-2">
             <span
@@ -168,14 +168,15 @@ export const TelemetryVitalsGrid: React.FC<TelemetryVitalsGridProps> = ({
                   : 'text-slate-100'
               }`}
             >
-              {cabin?.ambientCO2?.toFixed(1) || '0.0'}
+              {((cabin?.ambientCO2 || 0) / 7.6).toFixed(2)}%
             </span>
-            <span className="text-xs text-slate-400 font-mono">
-              {cabin.ambientCO2 > 3.5 ? 'Headache Risk' : 'Clean Air'}
+            <span className="text-xs text-slate-400 font-mono tabular-nums">
+              ({cabin?.ambientCO2?.toFixed(1) || '0.0'} mmHg)
             </span>
           </div>
-          <div className="text-[11px] font-mono text-slate-400 border-t border-slate-800/80 pt-1.5">
-            Headache Risk: {hypercapnia.headacheRiskPercentage}%
+          <div className="text-[11px] font-mono text-slate-400 border-t border-slate-800/80 pt-1.5 flex justify-between">
+            <span>{cabin.ambientCO2 > 3.5 ? 'Headache Risk' : 'Clean Air'}</span>
+            <span>Risk: {hypercapnia.headacheRiskPercentage}%</span>
           </div>
         </div>
 

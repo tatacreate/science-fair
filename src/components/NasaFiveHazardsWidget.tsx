@@ -9,6 +9,7 @@ import {
   ArrowRight,
   Info,
   ShieldCheck,
+  ExternalLink,
 } from 'lucide-react';
 import { NasaHazardId, NasaHazardStatus } from '../data/nasaFiveHazards';
 
@@ -77,10 +78,19 @@ export const NasaFiveHazardsWidget: React.FC<NasaFiveHazardsWidgetProps> = ({
           </span>
         </div>
 
-        <div className="flex items-center gap-3 text-[11px] font-mono text-slate-400">
+        <div className="flex flex-wrap items-center gap-3 text-[11px] font-mono text-slate-400">
           <span className="text-emerald-400">● Nominal</span>
           <span className="text-amber-400">● Elevated</span>
           <span className="text-rose-400">● Action Required</span>
+          <a
+            href="https://www.nasa.gov/hrp/hazards/"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex items-center gap-1 text-cyan-400 hover:text-cyan-300 underline underline-offset-2"
+          >
+            <span>NASA HRP Hazards</span>
+            <ExternalLink className="w-3 h-3" />
+          </a>
         </div>
       </div>
 

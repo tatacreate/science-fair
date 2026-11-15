@@ -673,6 +673,7 @@ export const Biometric3DViewer: React.FC<Biometric3DViewerProps> = ({
       const isJointsInPain = pAreas.some((a) => /joint|knee|hip|elbow/i.test(a));
       const isShouldersInPain = pAreas.some((a) => /shoulder/i.test(a));
       const isEyesInPain = pAreas.some((a) => /eye/i.test(a));
+      const isHeartInPain = pAreas.some((a) => /chest|heart|cardiac/i.test(a));
       const activeScenarioId = telemetryRef.current.activeScenario;
 
       const hazardPulse = (Math.sin(elapsed * 4.5) + 1) * 0.5;
@@ -708,13 +709,31 @@ export const Biometric3DViewer: React.FC<Biometric3DViewerProps> = ({
         } else if (name === 'abdomen') {
           isHazard = isAbdomenInPain || activeScenarioId === 'osdr-511-test' || activeScenarioId === 'osdr-102-test';
         } else if (name === 'head') {
-          isHazard = isHeadInPain || activeScenarioId === 'osdr-352-test';
+          isHazard =
+            isHeadInPain ||
+            activeScenarioId === 'osdr-352-test' ||
+            activeScenarioId === 'demo-co2-headache' ||
+            activeScenarioId === 'demo-solar-radiation' ||
+            activeScenarioId === 'demo-sleep-fatigue' ||
+            activeScenarioId === 'scenario-hypercapnia' ||
+            activeScenarioId === 'scenario-radiation';
         } else if (name === 'left_eye' || name === 'right_eye') {
-          isHazard = isEyesInPain || activeScenarioId === 'osdr-484-test';
+          isHazard =
+            isEyesInPain ||
+            activeScenarioId === 'osdr-484-test' ||
+            activeScenarioId === 'demo-co2-headache';
         } else if (name === 'left_lung' || name === 'right_lung') {
-          isHazard = activeScenarioId === 'osdr-630-test';
+          isHazard =
+            activeScenarioId === 'osdr-630-test' ||
+            activeScenarioId === 'scenario-decompression';
+        } else if (name === 'heart') {
+          isHazard =
+            isHeartInPain ||
+            activeScenarioId === 'demo-chest-discomfort' ||
+            activeScenarioId === 'scenario-cardiac' ||
+            hr > 105;
         } else if (name === 'neck') {
-          isHazard = isNeckInPain;
+          isHazard = isNeckInPain || activeScenarioId === 'demo-sleep-fatigue';
         } else if (name.includes('shoulder')) {
           isHazard = isShouldersInPain;
         } else if (name.includes('knee') || name.includes('elbow') || name.includes('hip')) {
@@ -752,7 +771,11 @@ export const Biometric3DViewer: React.FC<Biometric3DViewerProps> = ({
             mat.color.setHex(0x38bdf8);
             mat.emissive.setHex(0x0ea5e9);
             mat.emissiveIntensity = 1.0;
-          } else if (name !== 'heart') {
+          } else if (name === 'heart') {
+            mat.color.setHex(0xfb7185);
+            mat.emissive.setHex(0xe11d48);
+            mat.emissiveIntensity = 0.7;
+          } else {
             mat.color.setHex(0x00f0ff);
             mat.emissive.setHex(0x004d66);
             mat.emissiveIntensity = 0.35;
@@ -885,6 +908,30 @@ export const Biometric3DViewer: React.FC<Biometric3DViewerProps> = ({
 
   // Dynamic live status evaluation for the selected region
   const getRegionLiveStatus = (region: AnatomicalRegionInfo): { label: string; colorClass: string } => {
+    if (activeScenario === 'demo-co2-headache' && (region.id === 'head_brain' || region.id === 'eyes_ocular')) {
+      return {
+        label: 'ELEVATED CO₂ (0.8%) · HEADACHE',
+        colorClass: 'bg-amber-950 border-amber-500 text-amber-200',
+      };
+    }
+    if (activeScenario === 'demo-chest-discomfort' && region.id === 'heart_cardio') {
+      return {
+        label: 'CHEST DISCOMFORT · HR SPIKE',
+        colorClass: 'bg-rose-950 border-rose-500 text-rose-200',
+      };
+    }
+    if (activeScenario === 'demo-solar-radiation' && region.id === 'head_brain') {
+      return {
+        label: 'SOLAR RADIATION SPIKE ALERT',
+        colorClass: 'bg-rose-950 border-rose-500 text-rose-200',
+      };
+    }
+    if (activeScenario === 'demo-sleep-fatigue' && region.id === 'head_brain') {
+      return {
+        label: 'SLEEP DEPRIVATION & FATIGUE',
+        colorClass: 'bg-amber-950 border-amber-500 text-amber-200',
+      };
+    }
     if (activeScenario === 'osdr-511-test' && (region.id === 'abdomen_renal' || region.id === 'heart_cardio')) {
       return {
         label: 'OSD-511: METABOLIC DRIFT (WATCH)',

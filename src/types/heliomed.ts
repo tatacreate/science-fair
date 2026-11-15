@@ -66,12 +66,29 @@ export interface MedicalNote {
 export interface SimulationScenario {
   id: string;
   name: string;
-  category: 'hypercapnia' | 'radiation_spike' | 'acute_cardiac_fatigue' | 'decompression_alert';
+  shortLabel?: string;
+  category:
+    | 'hypercapnia'
+    | 'radiation_spike'
+    | 'acute_cardiac_fatigue'
+    | 'decompression_alert'
+    | 'sleep_fatigue';
   severity: TriageLevel;
   description: string;
   clinicalSigns: string;
+  targetRegionId?: string;
   cabinModifiers: Partial<CabinEnvironment>;
   vitalsModifiers: Partial<TelemetryState>;
+  simulatedCheckinOverlay?: {
+    sleepQuality?: number;
+    sleepHours?: number;
+    mentalHealth?: string;
+    overallFeeling?: string;
+    painAreas?: string[];
+    painSeverity?: number;
+    hydrationLiters?: number;
+  };
   countermeasures: string[];
   scientificMechanism: string;
 }
+

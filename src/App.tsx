@@ -60,6 +60,12 @@ import { evaluateSpecificNasaRisks } from './data/nasaHrpRisks';
 import { NasaFiveHazardsWidget } from './components/NasaFiveHazardsWidget';
 import { NasaReferenceModal } from './components/NasaReferenceModal';
 import { NasaRiskMatrixModal, SmartRiskPills } from './components/NasaRiskPillsAndModal';
+import { ScenarioSimulatorBar } from './components/ScenarioSimulatorBar';
+import { ExplainableAssessmentCardList } from './components/ExplainableAssessmentCard';
+import { MissionHealthTimeline } from './components/MissionHealthTimeline';
+import { NasaDataEvidenceCenter } from './components/NasaDataEvidenceCenter';
+import { runCorrelationEngine } from './utils/correlationEngine';
+import { updateLatestTimelineDay } from './data/missionTimelineStore';
 import {
   LogOut,
   Home,
@@ -70,13 +76,13 @@ import {
   Radiation,
   FileSpreadsheet,
   Award,
-  RotateCcw,
   BookOpen,
   Compass,
   ShieldCheck,
+  ExternalLink,
 } from 'lucide-react';
 
-type StationTab = 'body' | 'trends' | 'routine' | 'emergency' | 'comms';
+type StationTab = 'body' | 'trends' | 'routine' | 'emergency' | 'comms' | 'nasa_refs';
 
 export default function App() {
   const [user, setUser] = useState<User | null>(null);
@@ -99,6 +105,7 @@ export default function App() {
   const [evaMode, setEvaMode] = useState(false);
   const [marsTransitDelaySeconds, setMarsTransitDelaySeconds] = useState<number>(1214);
   const [dailyCheckins, setDailyCheckins] = useState<DailyCheckin[]>([]);
+  const [timelineSyncNonce, setTimelineSyncNonce] = useState<number>(0);
 
   // Interactive 3D Body Region & Exam Workbench Sync
   const [selectedBodyRegionId, setSelectedBodyRegionId] = useState<string | null>(null);
@@ -199,6 +206,18 @@ export default function App() {
   // Listen to daily_checkins from Firestore when user is authenticated
   useEffect(() => {
     if (!user) {
+      try {
+        const saved = localStorage.getItem('heliomed_daily_checkins_v1');
+        if (saved) {
+          const parsed = JSON.parse(saved);
+          if (Array.isArray(parsed) && parsed.length > 0) {
+            setDailyCheckins(parsed);
+            return;
+          }
+        }
+      } catch {
+        // ignore storage read errors
+      }
       const initialSample: DailyCheckin = {
         id: 'sample-01',
         userId: 'local',
@@ -409,6 +428,10 @@ export default function App() {
         ...sc.vitalsModifiers,
         timestamp: Date.now(),
       }));
+      if (sc.targetRegionId) {
+        setSelectedBodyRegionId(sc.targetRegionId);
+        setRegionFocusNonce((n) => n + 1);
+      }
     } else {
       const envProfile =
         HABITAT_ENVIRONMENTS.find((e) => e.id === activeEnvId) || HABITAT_ENVIRONMENTS[0];
@@ -431,6 +454,7 @@ export default function App() {
         diastolicBp: 76,
         fatigueScore: 24,
       }));
+      setSelectedBodyRegionId(null);
     }
   };
 
@@ -479,8 +503,26 @@ export default function App() {
     }
   };
 
-  // Save new daily checkin to Firestore or local state
+  // Save new daily checkin locally (and Firestore if Google user active) + update 14-day Mars Timeline
   const handleSaveCheckin = async (checkin: DailyCheckin) => {
+    const stressEstimate = Math.max(
+      1,
+      Math.min(
+        10,
+        checkin.sleepQuality <= 4 || /anxious|overwhelmed|stress|isolation/i.test(checkin.mentalHealth)
+          ? 7
+          : 11 - checkin.sleepQuality
+      )
+    );
+    updateLatestTimelineDay(currentAstronaut?.id || 'default', {
+      sleepHours: checkin.sleepHours,
+      stressScore: stressEstimate,
+      painSeverity: checkin.hasPain ? checkin.painSeverity : 0,
+      painZone: checkin.hasPain && checkin.painAreas.length > 0 ? checkin.painAreas.join(', ') : 'None',
+      note: checkin.overallFeeling || 'Daily self-check logged.',
+    });
+    setTimelineSyncNonce((n) => n + 1);
+
     if (user) {
       try {
         await setDoc(doc(db, 'daily_checkins', checkin.id), checkin);
@@ -488,7 +530,15 @@ export default function App() {
         handleFirestoreError(err, OperationType.CREATE, 'daily_checkins');
       }
     } else {
-      setDailyCheckins((prev) => [checkin, ...prev]);
+      setDailyCheckins((prev) => {
+        const next = [checkin, ...prev];
+        try {
+          localStorage.setItem('heliomed_daily_checkins_v1', JSON.stringify(next));
+        } catch {
+          // ignore storage quota errors
+        }
+        return next;
+      });
     }
   };
 
@@ -617,9 +667,35 @@ export default function App() {
   const hasSubmittedToday =
     dailyCheckins.some((c) => c.date === todayStr) || !!currentAstronaut?.hasSubmittedToday;
 
-  const activePainAreas = latestCheckin?.hasPain
+  const basePainAreas = latestCheckin?.hasPain
     ? latestCheckin.painAreas
     : currentAstronaut?.activePainAreas || [];
+
+  const scenarioOverlay = activeScenario?.simulatedCheckinOverlay;
+  const activePainAreas =
+    scenarioOverlay?.painAreas && scenarioOverlay.painAreas.length > 0
+      ? Array.from(new Set([...basePainAreas, ...scenarioOverlay.painAreas]))
+      : basePainAreas;
+
+  const effectiveLatestCheckin: DailyCheckin | null = scenarioOverlay
+    ? {
+        id: latestCheckin?.id || 'sim-overlay',
+        userId: latestCheckin?.userId || 'local',
+        astronautName,
+        date: todayStr,
+        sleepQuality: scenarioOverlay.sleepQuality ?? latestCheckin?.sleepQuality ?? 8,
+        sleepHours: scenarioOverlay.sleepHours ?? latestCheckin?.sleepHours ?? 7.2,
+        mentalHealth: scenarioOverlay.mentalHealth ?? latestCheckin?.mentalHealth ?? 'Focused',
+        overallFeeling: scenarioOverlay.overallFeeling ?? latestCheckin?.overallFeeling ?? 'Nominal',
+        hasPain: activePainAreas.length > 0,
+        painAreas: activePainAreas,
+        painSeverity: scenarioOverlay.painSeverity ?? latestCheckin?.painSeverity ?? 0,
+        painNotes: latestCheckin?.painNotes || '',
+        habitsToImprove: latestCheckin?.habitsToImprove || [],
+        habitsStrugglingWith: latestCheckin?.habitsStrugglingWith || [],
+        createdAt: latestCheckin?.createdAt || 'Now',
+      }
+    : latestCheckin;
 
   const activeEnvObj =
     HABITAT_ENVIRONMENTS.find((e) => e.id === activeEnvId) || HABITAT_ENVIRONMENTS[0];
@@ -631,7 +707,7 @@ export default function App() {
     telemetry,
     cabin: cabinEnvironment,
     cumulativeDoseMsv: currentAstronaut?.cumulativeRadiationDoseMsv || 94.2,
-    latestCheckin,
+    latestCheckin: effectiveLatestCheckin,
     painAreas: activePainAreas,
     activeEnvId,
     missionCode: activeMissionCode,
@@ -639,7 +715,7 @@ export default function App() {
     marsTransitDelaySeconds,
   });
 
-  const effectiveEvaMode = evaMode || Boolean(latestCheckin?.evaMode);
+  const effectiveEvaMode = evaMode || Boolean(effectiveLatestCheckin?.evaMode);
   const { activeRisks: activeSpecificRisks, allRisks: allSpecificRisks } =
     evaluateSpecificNasaRisks({
       heartRate: telemetry.heartRate,
@@ -650,15 +726,25 @@ export default function App() {
       ambientCO2: cabinEnvironment.ambientCO2,
       ambientPressure: cabinEnvironment.ambientPressure,
       painAreas: activePainAreas,
-      sleepQuality: latestCheckin?.sleepQuality,
-      sleepHours: latestCheckin?.sleepHours,
-      mentalHealth: latestCheckin?.mentalHealth,
-      overallFeeling: latestCheckin?.overallFeeling,
-      habitsStrugglingWith: latestCheckin?.habitsStrugglingWith,
+      sleepQuality: effectiveLatestCheckin?.sleepQuality,
+      sleepHours: effectiveLatestCheckin?.sleepHours,
+      mentalHealth: effectiveLatestCheckin?.mentalHealth,
+      overallFeeling: effectiveLatestCheckin?.overallFeeling,
+      habitsStrugglingWith: effectiveLatestCheckin?.habitsStrugglingWith,
       evaMode: effectiveEvaMode,
       activeScenarioId: activeScenario?.id,
       selectedRegionId: selectedBodyRegionId,
     });
+
+  const correlationAssessments = runCorrelationEngine({
+    telemetry,
+    cabin: cabinEnvironment,
+    latestCheckin: effectiveLatestCheckin,
+    painAreas: activePainAreas,
+    evaMode: effectiveEvaMode,
+    activeScenario,
+    cumulativeDoseMsv: currentAstronaut?.cumulativeRadiationDoseMsv || 94.2,
+  });
 
   const handleHazardAction = (hazard: NasaHazardStatus) => {
     if (hazard.id === 'radiation') {
@@ -757,23 +843,26 @@ export default function App() {
           onStartDueRoutine={handleLaunchRoutineAction}
         />
 
-        {/* Active Simulation Notice Strip */}
-        {activeScenario && (
-          <div className="p-3.5 rounded-xl bg-amber-950/60 border border-amber-600/80 flex flex-wrap items-center justify-between gap-3 text-xs">
-            <div>
-              <strong className="text-amber-300 font-mono">{activeScenario.name}</strong>
-              <span className="text-slate-300 ml-2">— {activeScenario.clinicalSigns}</span>
-            </div>
-            <button
-              type="button"
-              onClick={() => handleSimulateEmergency(null, null)}
-              className="px-3 py-1.5 rounded-lg bg-slate-900 hover:bg-slate-800 border border-slate-700 text-slate-200 font-mono flex items-center gap-1.5 cursor-pointer whitespace-nowrap"
-            >
-              <RotateCcw className="w-3.5 h-3.5" />
-              <span>Restore Normal Baseline</span>
-            </button>
-          </div>
-        )}
+        {/* Interactive Emergency Scenario Simulator (Demo Mode) */}
+        <ScenarioSimulatorBar
+          activeScenario={activeScenario}
+          onSelectScenario={handleSelectScenario}
+        />
+
+        {/* Structured Explainable Assessment Cards (Replaces Basic Red/Amber Alerts) */}
+        <ExplainableAssessmentCardList
+          assessments={correlationAssessments}
+          hasActiveScenario={Boolean(activeScenario)}
+          onClearScenario={() => handleSimulateEmergency(null, null)}
+          onFocusBodyRegion={(regId) => {
+            setActiveStationTab('body');
+            setSelectedBodyRegionId(regId);
+            setRegionFocusNonce((n) => n + 1);
+            setTimeout(() => {
+              bodySectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            }, 60);
+          }}
+        />
 
         {/* Compact NASA 5 Hazards Monitor HUD */}
         <NasaFiveHazardsWidget
@@ -844,7 +933,7 @@ export default function App() {
           )}
         </div>
 
-        {/* Focused 5-Tab Workspace Navigation */}
+        {/* Focused 6-Tab Workspace Navigation */}
         <div className="flex flex-wrap items-center gap-1.5 p-1.5 rounded-xl bg-slate-900 border border-slate-800">
           <button
             type="button"
@@ -869,7 +958,7 @@ export default function App() {
             }`}
           >
             <TrendingUp className="w-4 h-4" />
-            <span>Trends &amp; OSDR Tests</span>
+            <span>Mission Timeline &amp; Trends</span>
           </button>
 
           <button
@@ -909,6 +998,19 @@ export default function App() {
           >
             <FileSpreadsheet className="w-4 h-4" />
             <span>Doctor Forms &amp; Comms</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setActiveStationTab('nasa_refs')}
+            className={`px-3.5 py-2 rounded-lg text-xs font-mono font-semibold transition-colors cursor-pointer flex items-center gap-2 whitespace-nowrap ${
+              activeStationTab === 'nasa_refs'
+                ? 'bg-cyan-600 text-white'
+                : 'text-slate-300 hover:bg-slate-800'
+            }`}
+          >
+            <BookOpen className="w-4 h-4" />
+            <span>NASA References</span>
           </button>
 
           <div className="ml-auto hidden sm:flex items-center gap-3 px-3 text-xs font-mono text-amber-300">
@@ -960,10 +1062,10 @@ export default function App() {
                   selectedRegionId={selectedBodyRegionId}
                   regionFocusNonce={regionFocusNonce}
                   cabinCO2={cabinEnvironment.ambientCO2}
-                  sleepQuality={latestCheckin?.sleepQuality}
-                  mentalHealth={latestCheckin?.mentalHealth}
-                  overallFeeling={latestCheckin?.overallFeeling}
-                  habitsStrugglingWith={latestCheckin?.habitsStrugglingWith}
+                  sleepQuality={effectiveLatestCheckin?.sleepQuality}
+                  mentalHealth={effectiveLatestCheckin?.mentalHealth}
+                  overallFeeling={effectiveLatestCheckin?.overallFeeling}
+                  habitsStrugglingWith={effectiveLatestCheckin?.habitsStrugglingWith}
                   evaMode={effectiveEvaMode}
                   onRegionSelect={(regId) => setSelectedBodyRegionId(regId)}
                   onStartExamForRegion={(regId) => {
@@ -1008,9 +1110,16 @@ export default function App() {
           </div>
         )}
 
-        {/* TAB 2: TRENDS & NASA OSDR TESTS */}
+        {/* TAB 2: 14-DAY MISSION HEALTH TIMELINE, TRENDS & NASA OSDR TESTS */}
         {activeStationTab === 'trends' && (
           <div className="space-y-6">
+            <MissionHealthTimeline
+              astronautId={currentAstronaut?.id || 'default'}
+              astronautName={astronautName}
+              roleView="astronaut"
+              externalSyncNonce={timelineSyncNonce}
+            />
+
             <DynamicHealthCharts
               liveHeartRate={telemetry.heartRate}
               liveSpo2={telemetry.spo2}
@@ -1079,19 +1188,55 @@ export default function App() {
             dailyCheckins={dailyCheckins}
           />
         )}
+
+        {/* TAB 6: NASA DATA & EVIDENCE CENTER */}
+        {activeStationTab === 'nasa_refs' && (
+          <NasaDataEvidenceCenter
+            onOpenRiskMatrix={() => setIsRiskMatrixOpen(true)}
+          />
+        )}
       </main>
 
       {/* Clean NASA Data & References Footer */}
       <footer className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 mt-8 pt-4 border-t border-slate-900 flex flex-wrap items-center justify-between gap-3 text-xs font-mono text-slate-500">
         <span>HelioMed · 100% Offline Deep-Space Station</span>
-        <button
-          type="button"
-          onClick={() => setIsNasaRefOpen(true)}
-          className="px-3 py-1.5 rounded-lg bg-slate-900 hover:bg-slate-800 border border-slate-800 text-cyan-400 hover:text-cyan-300 flex items-center gap-1.5 transition cursor-pointer"
-        >
-          <BookOpen className="w-3.5 h-3.5" />
-          <span>Powered by NASA HRP Data</span>
-        </button>
+        <div className="flex flex-wrap items-center gap-3">
+          <a
+            href="https://www.nasa.gov/hrp/hazards/"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex items-center gap-1 text-slate-400 hover:text-cyan-300 underline underline-offset-2"
+          >
+            <span>NASA HRP Hazards</span>
+            <ExternalLink className="w-3 h-3" />
+          </a>
+          <a
+            href="https://www.nasa.gov/hrp/risks/"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex items-center gap-1 text-slate-400 hover:text-cyan-300 underline underline-offset-2"
+          >
+            <span>NASA HRP Risks</span>
+            <ExternalLink className="w-3 h-3" />
+          </a>
+          <a
+            href="https://www.asc-csa.gc.ca/eng/news/articles/2026/2026-02-26-monitoring-radiation-astronaut-health.asp"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex items-center gap-1 text-slate-400 hover:text-cyan-300 underline underline-offset-2"
+          >
+            <span>CSA CANS Radiation</span>
+            <ExternalLink className="w-3 h-3" />
+          </a>
+          <button
+            type="button"
+            onClick={() => setIsNasaRefOpen(true)}
+            className="px-3 py-1.5 rounded-lg bg-slate-900 hover:bg-slate-800 border border-slate-800 text-cyan-400 hover:text-cyan-300 flex items-center gap-1.5 transition cursor-pointer"
+          >
+            <BookOpen className="w-3.5 h-3.5" />
+            <span>Powered by NASA HRP Data</span>
+          </button>
+        </div>
       </footer>
 
       {/* Daily Astronaut Self-Check Modal */}

@@ -1,5 +1,5 @@
 import React from 'react';
-import { X, BookOpen, ShieldCheck, Database } from 'lucide-react';
+import { X, BookOpen, ShieldCheck, Database, ExternalLink } from 'lucide-react';
 
 interface NasaReferenceModalProps {
   isOpen: boolean;
@@ -15,24 +15,28 @@ export const NasaReferenceModal: React.FC<NasaReferenceModalProps> = ({ isOpen, 
       detail:
         'Defines the five primary human health risks monitored in HelioMed: Space Radiation, Isolation & Confinement, Distance from Earth, Gravity Fields, and Hostile/Closed Environments.',
       tag: 'Primary Clinical Framework',
+      url: 'https://www.nasa.gov/hrp/hazards/',
     },
     {
-      title: 'NASA-STD-3001 Volume 2 — Human Factors, Habitability & Environmental Health',
+      title: 'NASA Human Research Program (HRP) — Specific Human Health Risks',
       detail:
-        'Sets operational thresholds used across HelioMed for cabin CO₂ (< 3.0–4.5 mmHg), barometric pressure (56.5–101.3 kPa), arterial oxygen (SpO₂), radiation shelter triggers (> 15 µSv/h), and SANS optic nerve limits.',
-      tag: 'Vital & Habitat Thresholds',
+        'Official physiological, behavioral performance, and space radiation risks (SANS, vestibular, musculoskeletal, immune, sleep, teamwork, radiation-induced cancers) mapped to HelioMed checks.',
+      tag: 'Specific Risk Matrix',
+      url: 'https://www.nasa.gov/hrp/risks/',
     },
     {
-      title: 'NASA Open Science Data Repository (OSDR) — Studies OSD-511, 484, 352, 630, 102',
+      title: 'NASA-STD-3001 Volume 2 & OSDR Studies (OSD-511, 484, 352, 630, 102)',
       detail:
-        'Embedded offline cohort baselines comparing Earth norms vs. spaceflight glucose drift, optic nerve swelling (ONSD), cosmic radiation dosing, lunar regolith airway effects, and bone-calcium hydration loss.',
-      tag: 'Offline Testbench Studies',
+        'Sets operational vital & cabin thresholds (CO₂, pressure, SpO₂, ONSD) alongside embedded offline spaceflight cohort benchmarks for autonomous onboard triage.',
+      tag: 'Thresholds & OSDR Data',
+      url: null as string | null,
     },
     {
-      title: 'Canadian Space Agency (CSA) & Bubble Technology Industries (BTI) — CANS Spectrometer',
+      title: 'Canadian Space Agency (CSA) — Monitoring Radiation & Astronaut Health (CANS)',
       detail:
-        'Canadian Active Neutron Spectrometer (CANS) and Space Bubble Detector heritage for continuous autonomous monitoring of secondary neutron radiation (~30% of deep-space mission dose), plus Earth applications in aircrew safety, proton cancer therapy, and nuclear monitoring.',
+        'Canadian Active Neutron Spectrometer (CANS) and Bubble Technology Industries bubble-detector heritage for continuous monitoring of neutron radiation (~30% of space dose), plus Earth benefits.',
       tag: 'CSA / Neutron Engineering',
+      url: 'https://www.asc-csa.gc.ca/eng/news/articles/2026/2026-02-26-monitoring-radiation-astronaut-health.asp',
     },
   ];
 
@@ -75,13 +79,33 @@ export const NasaReferenceModal: React.FC<NasaReferenceModalProps> = ({ isOpen, 
                 </span>
               </div>
               <p className="text-slate-300 leading-relaxed">{src.detail}</p>
+              {src.url && (
+                <a
+                  href={src.url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-1.5 text-[11px] font-mono text-cyan-400 hover:text-cyan-300 underline underline-offset-2 pt-0.5 break-all"
+                >
+                  <span>{src.url}</span>
+                  <ExternalLink className="w-3 h-3 shrink-0" />
+                </a>
+              )}
             </div>
           ))}
+
+          <div className="p-3.5 rounded-xl bg-amber-950/35 border border-amber-700/60 space-y-1 text-slate-200">
+            <span className="font-mono text-[11px] font-bold uppercase text-amber-300 block">
+              Telemetry Disclaimer · Simulated Telemetry for Prototype Testing
+            </span>
+            <p className="text-[11px] text-slate-300 leading-relaxed">
+              Cabin sensor readings (CO₂, pressure, temperature, radiation flux) and biometric vitals are simulated locally for prototype demonstration. Guidance cards provide non-diagnostic crew safety actions.
+            </p>
+          </div>
 
           <div className="p-3 rounded-xl bg-emerald-950/30 border border-emerald-800/50 flex items-center justify-between text-slate-300">
             <span className="flex items-center gap-2">
               <Database className="w-4 h-4 text-emerald-400 shrink-0" />
-              All reference thresholds and OSDR benchmarks run 100% locally with zero internet dependency.
+              All reference thresholds and OSDR benchmarks run 100% locally with zero external backend dependencies.
             </span>
             <ShieldCheck className="w-4 h-4 text-emerald-400 shrink-0" />
           </div>

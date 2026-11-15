@@ -10,6 +10,7 @@ import {
   Brain,
   Radiation,
   Compass,
+  ExternalLink,
 } from 'lucide-react';
 import { FlaggedNasaRisk, NasaRiskCategory } from '../data/nasaHrpRisks';
 
@@ -199,9 +200,20 @@ export const NasaRiskMatrixModal: React.FC<NasaRiskMatrixModalProps> = ({
               <h3 className="text-base font-bold text-slate-100">
                 NASA HRP Specific Health Risk Coverage Matrix
               </h3>
-              <p className="text-xs text-slate-400">
-                100% offline active surveillance across {allRisks.length} official NASA risks ·{' '}
-                <strong className="text-amber-300 font-mono">{activeCount} currently flagged</strong>
+              <p className="text-xs text-slate-400 flex flex-wrap items-center gap-2">
+                <span>
+                  100% offline active surveillance across {allRisks.length} official NASA risks ·{' '}
+                  <strong className="text-amber-300 font-mono">{activeCount} currently flagged</strong>
+                </span>
+                <a
+                  href="https://www.nasa.gov/hrp/risks/"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-1 font-mono text-[11px] text-cyan-400 hover:text-cyan-300 underline underline-offset-2"
+                >
+                  <span>nasa.gov/hrp/risks</span>
+                  <ExternalLink className="w-3 h-3" />
+                </a>
               </p>
             </div>
           </div>

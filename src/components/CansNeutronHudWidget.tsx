@@ -6,6 +6,7 @@ import {
   ShieldCheck,
   Radio,
   Sparkles,
+  ExternalLink,
 } from 'lucide-react';
 
 interface CansNeutronHudWidgetProps {
@@ -248,6 +249,17 @@ export const CansNeutronHudWidget: React.FC<CansNeutronHudWidgetProps> = ({
                 improves precision cancer radiation therapy, and strengthens nuclear plant safety on
                 Earth.
               </span>
+            </div>
+            <div className="pt-1 border-t border-slate-800/80">
+              <a
+                href="https://www.asc-csa.gc.ca/eng/news/articles/2026/2026-02-26-monitoring-radiation-astronaut-health.asp"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-1.5 font-mono text-[11px] text-cyan-400 hover:text-cyan-300 underline underline-offset-2"
+              >
+                <span>Canadian Space Agency (CSA): Monitoring Radiation &amp; Astronaut Health</span>
+                <ExternalLink className="w-3 h-3 shrink-0" />
+              </a>
             </div>
           </div>
         </div>

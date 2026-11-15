@@ -13,6 +13,7 @@ import {
   Compass,
   User,
   BookOpen,
+  ExternalLink,
 } from 'lucide-react';
 
 interface SignInIntroPageProps {
@@ -144,16 +145,45 @@ export const SignInIntroPage: React.FC<SignInIntroPageProps> = ({
 
         {/* Footer */}
         <footer className="border-t border-slate-900 bg-slate-950 py-5 px-6 text-xs text-slate-500 font-mono">
-          <div className="max-w-7xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-2">
+          <div className="max-w-7xl mx-auto flex flex-col md:flex-row items-center justify-between gap-3">
             <span>HelioMed · Autonomous Medical Station</span>
-            <button
-              type="button"
-              onClick={() => setIsNasaRefOpen(true)}
-              className="px-3 py-1.5 rounded-lg bg-slate-900 hover:bg-slate-800 border border-slate-800 text-cyan-400 hover:text-cyan-300 flex items-center gap-1.5 transition cursor-pointer"
-            >
-              <BookOpen className="w-3.5 h-3.5" />
-              <span>Powered by NASA HRP Data</span>
-            </button>
+            <div className="flex flex-wrap items-center justify-center gap-3">
+              <a
+                href="https://www.nasa.gov/hrp/hazards/"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-1 text-slate-400 hover:text-cyan-300 underline underline-offset-2"
+              >
+                <span>NASA HRP Hazards</span>
+                <ExternalLink className="w-3 h-3" />
+              </a>
+              <a
+                href="https://www.nasa.gov/hrp/risks/"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-1 text-slate-400 hover:text-cyan-300 underline underline-offset-2"
+              >
+                <span>NASA HRP Risks</span>
+                <ExternalLink className="w-3 h-3" />
+              </a>
+              <a
+                href="https://www.asc-csa.gc.ca/eng/news/articles/2026/2026-02-26-monitoring-radiation-astronaut-health.asp"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-1 text-slate-400 hover:text-cyan-300 underline underline-offset-2"
+              >
+                <span>CSA CANS Radiation</span>
+                <ExternalLink className="w-3 h-3" />
+              </a>
+              <button
+                type="button"
+                onClick={() => setIsNasaRefOpen(true)}
+                className="px-3 py-1.5 rounded-lg bg-slate-900 hover:bg-slate-800 border border-slate-800 text-cyan-400 hover:text-cyan-300 flex items-center gap-1.5 transition cursor-pointer"
+              >
+                <BookOpen className="w-3.5 h-3.5" />
+                <span>Powered by NASA HRP Data</span>
+              </button>
+            </div>
           </div>
         </footer>
 
@@ -368,16 +398,45 @@ export const SignInIntroPage: React.FC<SignInIntroPageProps> = ({
       </main>
 
       <footer className="border-t border-slate-900 bg-slate-950 py-4 px-6 text-xs text-slate-500 font-mono">
-        <div className="max-w-7xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-2">
+        <div className="max-w-7xl mx-auto flex flex-col md:flex-row items-center justify-between gap-3">
           <span>HelioMed · Autonomous Deep-Space Station</span>
-          <button
-            type="button"
-            onClick={() => setIsNasaRefOpen(true)}
-            className="px-3 py-1.5 rounded-lg bg-slate-900 hover:bg-slate-800 border border-slate-800 text-cyan-400 hover:text-cyan-300 flex items-center gap-1.5 transition cursor-pointer"
-          >
-            <BookOpen className="w-3.5 h-3.5" />
-            <span>Powered by NASA HRP Data</span>
-          </button>
+          <div className="flex flex-wrap items-center justify-center gap-3">
+            <a
+              href="https://www.nasa.gov/hrp/hazards/"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-1 text-slate-400 hover:text-cyan-300 underline underline-offset-2"
+            >
+              <span>NASA HRP Hazards</span>
+              <ExternalLink className="w-3 h-3" />
+            </a>
+            <a
+              href="https://www.nasa.gov/hrp/risks/"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-1 text-slate-400 hover:text-cyan-300 underline underline-offset-2"
+            >
+              <span>NASA HRP Risks</span>
+              <ExternalLink className="w-3 h-3" />
+            </a>
+            <a
+              href="https://www.asc-csa.gc.ca/eng/news/articles/2026/2026-02-26-monitoring-radiation-astronaut-health.asp"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-1 text-slate-400 hover:text-cyan-300 underline underline-offset-2"
+            >
+              <span>CSA CANS Radiation</span>
+              <ExternalLink className="w-3 h-3" />
+            </a>
+            <button
+              type="button"
+              onClick={() => setIsNasaRefOpen(true)}
+              className="px-3 py-1.5 rounded-lg bg-slate-900 hover:bg-slate-800 border border-slate-800 text-cyan-400 hover:text-cyan-300 flex items-center gap-1.5 transition cursor-pointer"
+            >
+              <BookOpen className="w-3.5 h-3.5" />
+              <span>Powered by NASA HRP Data</span>
+            </button>
+          </div>
         </div>
       </footer>
 

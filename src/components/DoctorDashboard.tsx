@@ -10,6 +10,12 @@ import { NasaFiveHazardsWidget } from './NasaFiveHazardsWidget';
 import { NasaReferenceModal } from './NasaReferenceModal';
 import { NasaRiskMatrixModal, SmartRiskPills } from './NasaRiskPillsAndModal';
 import { CansNeutronHudWidget } from './CansNeutronHudWidget';
+import { ScenarioSimulatorBar } from './ScenarioSimulatorBar';
+import { ExplainableAssessmentCardList } from './ExplainableAssessmentCard';
+import { MissionHealthTimeline } from './MissionHealthTimeline';
+import { NasaDataEvidenceCenter } from './NasaDataEvidenceCenter';
+import { runCorrelationEngine } from '../utils/correlationEngine';
+import { CabinEnvironment, DailyCheckin, SimulationScenario, TelemetryState } from '../types/heliomed';
 import {
   Stethoscope,
   Radio,
@@ -31,6 +37,7 @@ import {
   Check,
   BookOpen,
   ShieldCheck,
+  Calendar,
 } from 'lucide-react';
 
 interface DoctorDashboardProps {
@@ -72,11 +79,15 @@ export const DoctorDashboard: React.FC<DoctorDashboardProps> = ({
   const [selectedReportForReview, setSelectedReportForReview] = useState<SubmittedFormReport | null>(null);
   const [doctorDirectiveInput, setDoctorDirectiveInput] = useState<string>('');
 
-  // Create Mission Modal State, NASA Reference & Risk Matrix Modal
+  // Create Mission Modal State, NASA Reference & Risk Matrix Modal, Demo Scenario & Tabs
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [isNasaRefOpen, setIsNasaRefOpen] = useState(false);
   const [isRiskMatrixOpen, setIsRiskMatrixOpen] = useState(false);
   const [evaMode, setEvaMode] = useState(false);
+  const [doctorTab, setDoctorTab] = useState<'overview' | 'timeline' | 'nasa_refs'>('overview');
+  const [activeScenario, setActiveScenario] = useState<SimulationScenario | null>(null);
+  const [selectedDoctorRegionId, setSelectedDoctorRegionId] = useState<string | null>(null);
+  const [doctorRegionNonce, setDoctorRegionNonce] = useState<number>(0);
   const [newCode, setNewCode] = useState('');
   const [newName, setNewName] = useState('');
   const [newDestination, setNewDestination] = useState('');
@@ -142,53 +153,123 @@ export const DoctorDashboard: React.FC<DoctorDashboardProps> = ({
     ...currentCrew.map((c) => c.cumulativeRadiationDoseMsv || 14.2),
     14.2
   );
-  const fleetPainAreas = Array.from(new Set(currentCrew.flatMap((c) => c.activePainAreas || [])));
-  const focusCheckin =
+  const focusCrewMember = inspectedAstronaut || currentCrew[0];
+  const scenarioOverlay = activeScenario?.simulatedCheckinOverlay;
+  const effectiveFleetPainAreas = Array.from(
+    new Set([
+      ...currentCrew.flatMap((c) => c.activePainAreas || []),
+      ...(scenarioOverlay?.painAreas || []),
+    ])
+  );
+  const rawFocusCheckin =
     inspectedAstronaut?.latestCheckin ||
     currentCrew.find((c) => c.latestCheckin)?.latestCheckin ||
     null;
+
+  const focusCheckin: DailyCheckin | null = scenarioOverlay
+    ? {
+        id: rawFocusCheckin?.id || 'doc-sim-overlay',
+        userId: rawFocusCheckin?.userId || focusCrewMember?.id || 'crew',
+        astronautName: focusCrewMember?.name || 'Astronaut',
+        date: new Date().toISOString().split('T')[0],
+        sleepQuality: scenarioOverlay.sleepQuality ?? rawFocusCheckin?.sleepQuality ?? 8,
+        sleepHours: scenarioOverlay.sleepHours ?? rawFocusCheckin?.sleepHours ?? 7.2,
+        mentalHealth: scenarioOverlay.mentalHealth ?? rawFocusCheckin?.mentalHealth ?? 'Operational',
+        overallFeeling: scenarioOverlay.overallFeeling ?? rawFocusCheckin?.overallFeeling ?? 'Nominal',
+        hasPain: effectiveFleetPainAreas.length > 0,
+        painAreas: scenarioOverlay.painAreas || focusCrewMember?.activePainAreas || [],
+        painSeverity: scenarioOverlay.painSeverity ?? rawFocusCheckin?.painSeverity ?? 0,
+        painNotes: rawFocusCheckin?.painNotes || '',
+        habitsToImprove: rawFocusCheckin?.habitsToImprove || [],
+        habitsStrugglingWith: rawFocusCheckin?.habitsStrugglingWith || [],
+        createdAt: rawFocusCheckin?.createdAt || 'Live',
+      }
+    : rawFocusCheckin;
+
+  const liveDoctorTelemetry: TelemetryState = {
+    timestamp: Date.now(),
+    heartRate:
+      activeScenario?.vitalsModifiers.heartRate ??
+      focusCrewMember?.recentVitals.heartRate ??
+      72,
+    hrvRmssd: activeScenario?.vitalsModifiers.hrvRmssd ?? 56,
+    spo2:
+      activeScenario?.vitalsModifiers.spo2 ??
+      focusCrewMember?.recentVitals.spo2 ??
+      98,
+    coreTemp: 37.0,
+    respiratoryRate: activeScenario?.vitalsModifiers.respiratoryRate ?? 15,
+    radiationDoseRate:
+      activeScenario?.vitalsModifiers.radiationDoseRate ?? avgRadiationRate,
+    systolicBp: activeScenario?.vitalsModifiers.systolicBp ?? 118,
+    diastolicBp: activeScenario?.vitalsModifiers.diastolicBp ?? 76,
+    shockIndex: 0.61,
+    fatigueScore: activeScenario?.vitalsModifiers.fatigueScore ?? 25,
+  };
+
+  const liveDoctorCabin: CabinEnvironment = {
+    ambientCO2: activeScenario?.cabinModifiers.ambientCO2 ?? 2.3,
+    ambientPressure: activeScenario?.cabinModifiers.ambientPressure ?? 101.3,
+    cabinTemp: activeScenario?.cabinModifiers.cabinTemp ?? 21.8,
+    o2Fraction: activeScenario?.cabinModifiers.o2Fraction ?? 21.2,
+    relativeHumidity: 48,
+    speRadiationFlux: activeScenario?.cabinModifiers.speRadiationFlux ?? 4.2,
+  };
+
   const fleetFiveHazards = evaluateNasaFiveHazards({
-    telemetry: {
-      timestamp: Date.now(),
-      heartRate: inspectedAstronaut?.recentVitals.heartRate || currentCrew[0]?.recentVitals.heartRate || 72,
-      hrvRmssd: 56,
-      spo2: inspectedAstronaut?.recentVitals.spo2 || currentCrew[0]?.recentVitals.spo2 || 98,
-      coreTemp: 37.0,
-      respiratoryRate: 15,
-      radiationDoseRate: avgRadiationRate,
-      systolicBp: 118,
-      diastolicBp: 76,
-      shockIndex: 0.61,
-      fatigueScore: 25,
-    },
-    cabin: {
-      ambientCO2: 2.3,
-      ambientPressure: 101.3,
-      cabinTemp: 21.8,
-      o2Fraction: 21.2,
-      relativeHumidity: 48,
-      speRadiationFlux: 4.2,
-    },
+    telemetry: liveDoctorTelemetry,
+    cabin: liveDoctorCabin,
     cumulativeDoseMsv: fleetCumulativeDose,
     latestCheckin: focusCheckin,
-    painAreas: fleetPainAreas,
+    painAreas: effectiveFleetPainAreas,
     missionCode: currentMission.code,
+    activeScenarioId: activeScenario?.id,
   });
 
   const { activeRisks: fleetActiveSpecificRisks, allRisks: fleetAllSpecificRisks } =
     evaluateSpecificNasaRisks({
-      heartRate: inspectedAstronaut?.recentVitals.heartRate || currentCrew[0]?.recentVitals.heartRate || 72,
-      spo2: inspectedAstronaut?.recentVitals.spo2 || currentCrew[0]?.recentVitals.spo2 || 98,
-      radiationRate: avgRadiationRate,
+      heartRate: liveDoctorTelemetry.heartRate,
+      spo2: liveDoctorTelemetry.spo2,
+      radiationRate: liveDoctorTelemetry.radiationDoseRate,
       cumulativeDoseMsv: fleetCumulativeDose,
-      painAreas: fleetPainAreas,
+      fatigueScore: liveDoctorTelemetry.fatigueScore,
+      ambientCO2: liveDoctorCabin.ambientCO2,
+      ambientPressure: liveDoctorCabin.ambientPressure,
+      painAreas: effectiveFleetPainAreas,
       sleepQuality: focusCheckin?.sleepQuality,
       sleepHours: focusCheckin?.sleepHours,
       mentalHealth: focusCheckin?.mentalHealth,
       overallFeeling: focusCheckin?.overallFeeling,
       habitsStrugglingWith: focusCheckin?.habitsStrugglingWith,
       evaMode: evaMode || Boolean(focusCheckin?.evaMode),
+      activeScenarioId: activeScenario?.id,
+      selectedRegionId: selectedDoctorRegionId,
     });
+
+  const doctorAssessments = runCorrelationEngine({
+    telemetry: liveDoctorTelemetry,
+    cabin: liveDoctorCabin,
+    latestCheckin: focusCheckin,
+    painAreas: scenarioOverlay?.painAreas || focusCrewMember?.activePainAreas || [],
+    evaMode: evaMode || Boolean(focusCheckin?.evaMode),
+    activeScenario,
+    cumulativeDoseMsv: fleetCumulativeDose,
+  });
+
+  const handleSelectDoctorScenario = (sc: SimulationScenario | null) => {
+    setActiveScenario(sc);
+    if (sc) {
+      if (!inspectedAstronaut && currentCrew[0]) {
+        setInspectedAstronaut(currentCrew[0]);
+      }
+      if (sc.targetRegionId) {
+        setSelectedDoctorRegionId(sc.targetRegionId);
+        setDoctorRegionNonce((n) => n + 1);
+      }
+    } else {
+      setSelectedDoctorRegionId(null);
+    }
+  };
 
   const handleCreateMission = (e: React.FormEvent) => {
     e.preventDefault();
@@ -503,11 +584,89 @@ export const DoctorDashboard: React.FC<DoctorDashboardProps> = ({
           </div>
         )}
 
-        {/* Fleet NASA 5 Hazards Surveillance Monitor */}
-        <NasaFiveHazardsWidget
-          title={`Fleet NASA 5 Hazards Surveillance · ${currentMission.code}`}
-          hazards={fleetFiveHazards}
-        />
+        {/* Flight Surgeon Top Console Tabs */}
+        <div className="flex flex-wrap items-center gap-1.5 p-1.5 rounded-xl bg-slate-900 border border-slate-800">
+          <button
+            type="button"
+            onClick={() => setDoctorTab('overview')}
+            className={`px-3.5 py-2 rounded-lg text-xs font-mono font-semibold transition-colors cursor-pointer flex items-center gap-2 whitespace-nowrap ${
+              doctorTab === 'overview'
+                ? 'bg-cyan-600 text-white'
+                : 'text-slate-300 hover:bg-slate-800'
+            }`}
+          >
+            <Stethoscope className="w-4 h-4" />
+            <span>Mission &amp; Crew Overview</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setDoctorTab('timeline')}
+            className={`px-3.5 py-2 rounded-lg text-xs font-mono font-semibold transition-colors cursor-pointer flex items-center gap-2 whitespace-nowrap ${
+              doctorTab === 'timeline'
+                ? 'bg-cyan-600 text-white'
+                : 'text-slate-300 hover:bg-slate-800'
+            }`}
+          >
+            <Calendar className="w-4 h-4" />
+            <span>Mission Health Timeline</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setDoctorTab('nasa_refs')}
+            className={`px-3.5 py-2 rounded-lg text-xs font-mono font-semibold transition-colors cursor-pointer flex items-center gap-2 whitespace-nowrap ${
+              doctorTab === 'nasa_refs'
+                ? 'bg-cyan-600 text-white'
+                : 'text-slate-300 hover:bg-slate-800'
+            }`}
+          >
+            <BookOpen className="w-4 h-4" />
+            <span>NASA References</span>
+          </button>
+        </div>
+
+        {doctorTab === 'nasa_refs' && (
+          <NasaDataEvidenceCenter
+            onOpenRiskMatrix={() => setIsRiskMatrixOpen(true)}
+          />
+        )}
+
+        {doctorTab === 'timeline' && (
+          <MissionHealthTimeline
+            astronautId={focusCrewMember?.id || 'default'}
+            astronautName={focusCrewMember?.name || 'Christina Koch'}
+            roleView="doctor"
+          />
+        )}
+
+        {doctorTab === 'overview' && (
+          <div className="space-y-6">
+            {/* Interactive Emergency Scenario Simulator (Demo Mode) */}
+            <ScenarioSimulatorBar
+              activeScenario={activeScenario}
+              onSelectScenario={handleSelectDoctorScenario}
+            />
+
+            {/* Structured Explainable Assessment Cards */}
+            <ExplainableAssessmentCardList
+              assessments={doctorAssessments}
+              hasActiveScenario={Boolean(activeScenario)}
+              onClearScenario={() => handleSelectDoctorScenario(null)}
+              onFocusBodyRegion={(regId) => {
+                if (!inspectedAstronaut && currentCrew[0]) {
+                  setInspectedAstronaut(currentCrew[0]);
+                }
+                setSelectedDoctorRegionId(regId);
+                setDoctorRegionNonce((n) => n + 1);
+              }}
+            />
+
+            {/* Fleet NASA 5 Hazards Surveillance Monitor */}
+            <NasaFiveHazardsWidget
+              title={`Fleet NASA 5 Hazards Surveillance · ${currentMission.code}`}
+              hazards={fleetFiveHazards}
+            />
 
         {/* Fleet NASA HRP Specific Risk Alerts + Coverage Matrix Toggle */}
         <div className="p-4 rounded-2xl bg-slate-900/90 border border-slate-800 space-y-3">
@@ -795,7 +954,7 @@ export const DoctorDashboard: React.FC<DoctorDashboardProps> = ({
 
           {/* CANS Active Neutron Spectrometer Fleet Feed */}
           <CansNeutronHudWidget
-            doseRateUSv={inspectedAstronaut?.recentVitals.radiationRate || avgRadiationRate}
+            doseRateUSv={liveDoctorTelemetry.radiationDoseRate}
             cumulativeDoseMsv={
               inspectedAstronaut?.cumulativeRadiationDoseMsv || fleetCumulativeDose
             }
@@ -1006,17 +1165,28 @@ export const DoctorDashboard: React.FC<DoctorDashboardProps> = ({
               <div className="lg:col-span-8">
                 <Biometric3DViewer
                   theme={theme}
-                  heartRate={inspectedAstronaut.recentVitals.heartRate}
-                  spo2={inspectedAstronaut.recentVitals.spo2}
-                  radiationRate={inspectedAstronaut.recentVitals.radiationRate}
+                  heartRate={liveDoctorTelemetry.heartRate}
+                  spo2={liveDoctorTelemetry.spo2}
+                  radiationRate={liveDoctorTelemetry.radiationDoseRate}
                   cumulativeDoseMsv={inspectedAstronaut.cumulativeRadiationDoseMsv}
-                  status={inspectedAstronaut.status}
-                  painAreas={inspectedAstronaut.activePainAreas}
-                  sleepQuality={inspectedAstronaut.latestCheckin?.sleepQuality}
-                  mentalHealth={inspectedAstronaut.latestCheckin?.mentalHealth}
-                  overallFeeling={inspectedAstronaut.latestCheckin?.overallFeeling}
-                  habitsStrugglingWith={inspectedAstronaut.latestCheckin?.habitsStrugglingWith}
-                  evaMode={evaMode || Boolean(inspectedAstronaut.latestCheckin?.evaMode)}
+                  status={activeScenario ? activeScenario.severity : inspectedAstronaut.status}
+                  painAreas={
+                    scenarioOverlay?.painAreas
+                      ? Array.from(
+                          new Set([...inspectedAstronaut.activePainAreas, ...scenarioOverlay.painAreas])
+                        )
+                      : inspectedAstronaut.activePainAreas
+                  }
+                  activeScenario={activeScenario?.id}
+                  selectedRegionId={selectedDoctorRegionId}
+                  regionFocusNonce={doctorRegionNonce}
+                  cabinCO2={liveDoctorCabin.ambientCO2}
+                  sleepQuality={focusCheckin?.sleepQuality}
+                  mentalHealth={focusCheckin?.mentalHealth}
+                  overallFeeling={focusCheckin?.overallFeeling}
+                  habitsStrugglingWith={focusCheckin?.habitsStrugglingWith}
+                  evaMode={evaMode || Boolean(focusCheckin?.evaMode)}
+                  onRegionSelect={(regId) => setSelectedDoctorRegionId(regId)}
                   heightClassName="h-[440px]"
                   title={`3D HOLOGRAM MANNEQUIN - ${inspectedAstronaut.name.toUpperCase()}`}
                   astronautName={inspectedAstronaut.name}
@@ -1090,6 +1260,15 @@ export const DoctorDashboard: React.FC<DoctorDashboardProps> = ({
                 )}
               </div>
             </div>
+          </div>
+        )}
+
+            {/* 14-Day Mars Transit Mission Health Timeline (Flight Surgeon View) */}
+            <MissionHealthTimeline
+              astronautId={focusCrewMember?.id || 'default'}
+              astronautName={focusCrewMember?.name || 'Christina Koch'}
+              roleView="doctor"
+            />
           </div>
         )}
       </main>
@@ -1406,14 +1585,43 @@ export const DoctorDashboard: React.FC<DoctorDashboardProps> = ({
       {/* Clean NASA Data & References Footer */}
       <footer className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 mt-8 pt-4 border-t border-slate-900 flex flex-wrap items-center justify-between gap-3 text-xs font-mono text-slate-500">
         <span>HelioMed · Ground Flight Surgeon Console</span>
-        <button
-          type="button"
-          onClick={() => setIsNasaRefOpen(true)}
-          className="px-3 py-1.5 rounded-lg bg-slate-900 hover:bg-slate-800 border border-slate-800 text-cyan-400 hover:text-cyan-300 flex items-center gap-1.5 transition cursor-pointer"
-        >
-          <BookOpen className="w-3.5 h-3.5" />
-          <span>Powered by NASA HRP Data</span>
-        </button>
+        <div className="flex flex-wrap items-center gap-3">
+          <a
+            href="https://www.nasa.gov/hrp/hazards/"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex items-center gap-1 text-slate-400 hover:text-cyan-300 underline underline-offset-2"
+          >
+            <span>NASA HRP Hazards</span>
+            <ExternalLink className="w-3 h-3" />
+          </a>
+          <a
+            href="https://www.nasa.gov/hrp/risks/"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex items-center gap-1 text-slate-400 hover:text-cyan-300 underline underline-offset-2"
+          >
+            <span>NASA HRP Risks</span>
+            <ExternalLink className="w-3 h-3" />
+          </a>
+          <a
+            href="https://www.asc-csa.gc.ca/eng/news/articles/2026/2026-02-26-monitoring-radiation-astronaut-health.asp"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex items-center gap-1 text-slate-400 hover:text-cyan-300 underline underline-offset-2"
+          >
+            <span>CSA CANS Radiation</span>
+            <ExternalLink className="w-3 h-3" />
+          </a>
+          <button
+            type="button"
+            onClick={() => setIsNasaRefOpen(true)}
+            className="px-3 py-1.5 rounded-lg bg-slate-900 hover:bg-slate-800 border border-slate-800 text-cyan-400 hover:text-cyan-300 flex items-center gap-1.5 transition cursor-pointer"
+          >
+            <BookOpen className="w-3.5 h-3.5" />
+            <span>Powered by NASA HRP Data</span>
+          </button>
+        </div>
       </footer>
 
       <NasaReferenceModal
