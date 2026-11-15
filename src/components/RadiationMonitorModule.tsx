@@ -379,7 +379,7 @@ export const RadiationMonitorModule: React.FC<RadiationMonitorModuleProps> = ({
               {activeAlert}
             </h4>
             <p className="text-xs text-rose-300/90 leading-relaxed font-sans">
-              Immediate autonomous mitigation protocol engaged. NASA Flight Surgeons at Johnson Space Center are alerted via high-priority DSN telemetry packet. Execute proactive countermeasures below.
+              Immediate onboard mitigation protocol engaged. NASA Flight Surgeons at Johnson Space Center are alerted via high-priority DSN telemetry packet. Execute proactive countermeasures below.
             </p>
           </div>
         </div>

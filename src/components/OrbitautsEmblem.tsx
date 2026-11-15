@@ -171,7 +171,7 @@ export const HelioMedEmblem: React.FC<HelioMedEmblemProps> = ({ size = 'md', sho
             HELIOMED
           </text>
 
-          {/* Subordinate Plate: AUTONOMOUS HEALTH */}
+          {/* Subordinate Plate: DEEP SPACE CLINICAL */}
           <path
             d="M 120,345 Q 200,365 280,345 L 285,365 Q 200,388 115,365 Z"
             fill="#451a03"
@@ -201,7 +201,7 @@ export const HelioMedEmblem: React.FC<HelioMedEmblemProps> = ({ size = 'md', sho
             </span>
           </div>
           <span className="text-xs text-slate-400 font-medium">
-            Autonomous Medical Station
+            Deep-Space Medical Station
           </span>
         </div>
       )}

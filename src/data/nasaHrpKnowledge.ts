@@ -1,6 +1,6 @@
 /**
  * NASA Human Research Program (HRP) & Multilateral Space Agency Clinical Knowledge Base
- * 100% Offline Flight-Ready Reference for Autonomous Astronaut Self-Assessment
+ * 100% Offline Flight-Ready Reference for Astronaut Self-Assessment
  */
 
 export type ClinicalAttentionLevel = 'NOMINAL' | 'CREW_ATTENTION' | 'SURGEON_ALERT' | 'CRITICAL';

@@ -467,7 +467,7 @@ export const WorkspaceHub: React.FC<WorkspaceHubProps> = ({
 
             <textarea
               rows={2}
-              placeholder="Record symptoms, diagnostic notes, or autonomous mitigation steps..."
+              placeholder="Record symptoms, diagnostic notes, or onboard mitigation steps..."
               value={newBody}
               onChange={(e) => setNewBody(e.target.value)}
               className="w-full px-3 py-1.5 bg-slate-900 border border-slate-700/80 rounded-lg text-xs text-slate-100 placeholder-slate-500 focus:outline-none focus:border-cyan-500 resize-none"

@@ -188,7 +188,7 @@ export const CansNeutronHudWidget: React.FC<CansNeutronHudWidgetProps> = ({
           <div className="flex flex-wrap items-center justify-between gap-2">
             <span className="font-mono text-[11px] font-bold flex items-center gap-1.5">
               <ShieldAlert className="w-4 h-4 shrink-0" />
-              <span>⚠ NASA HRP Risk: Radiation-Induced Cancers · CANS Autonomous Alert</span>
+              <span>⚠ NASA HRP Risk: Radiation-Induced Cancers · CANS Continuous Alert</span>
             </span>
             {onTriggerShelter && (
               <button
@@ -230,7 +230,7 @@ export const CansNeutronHudWidget: React.FC<CansNeutronHudWidgetProps> = ({
             <div>
               <strong className="text-cyan-400 font-mono">What It Is:</strong>{' '}
               <span className="text-slate-300">
-                A compact, autonomous Canadian Space Agency instrument designed with Bubble
+                A compact Canadian Space Agency instrument designed with Bubble
                 Technology Industries to continuously measure harmful secondary neutrons in space.
               </span>
             </div>
@@ -238,7 +238,7 @@ export const CansNeutronHudWidget: React.FC<CansNeutronHudWidgetProps> = ({
               <strong className="text-amber-400 font-mono">Why It Matters:</strong>{' '}
               <span className="text-slate-300">
                 Neutrons cause ~30% of space radiation damage. Unlike older passive badge
-                detectors, autonomous continuous logging prevents surprise exposure spikes during
+                detectors, continuous real-time logging prevents surprise exposure spikes during
                 Moon and Mars missions.
               </span>
             </div>

@@ -1556,7 +1556,7 @@ export const DoctorDashboard: React.FC<DoctorDashboardProps> = ({
                 </label>
                 <textarea
                   rows={2}
-                  placeholder="Long-duration deep-space radiation shielding and autonomous clinical support."
+                  placeholder="Long-duration deep-space radiation shielding and onboard clinical support."
                   value={newDescription}
                   onChange={(e) => setNewDescription(e.target.value)}
                   className="w-full px-3 py-2 bg-slate-950 border border-slate-700 rounded-lg text-slate-100 text-xs focus:outline-none focus:border-amber-500 resize-none"

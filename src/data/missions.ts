@@ -36,7 +36,7 @@ export const INITIAL_MISSIONS: MissionDefinition[] = [
     flightSurgeon: 'Dr. Josef Schmid, MD (NASA Flight Surgeon)',
     earthDelay: '1.3s',
     crewCount: 4,
-    description: 'First crewed mission of NASA Orion spacecraft around the Moon. Deep-space life support and autonomous telemedicine validation.',
+    description: 'First crewed mission of NASA Orion spacecraft around the Moon. Deep-space life support and onboard telemedicine validation.',
   },
   {
     code: 'ARTEMIS-III',

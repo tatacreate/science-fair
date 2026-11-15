@@ -65,7 +65,7 @@ export const DailyNotificationBanner: React.FC<DailyNotificationBannerProps> = (
               <p className="text-xs text-slate-300 mt-1 max-w-2xl leading-relaxed">
                 {hasSubmittedToday
                   ? `Logged today: Sleep ${latestCheckin?.sleepQuality}/10, Mood: ${latestCheckin?.mentalHealth}. NASA-STD-3001 offline onboard guidance is active.`
-                  : 'In space there are no doctors on board. NASA flight surgeons are down on Earth with a 14+ minute communication delay. Check in on your sleep, mental health, pain, and habits so HelioMed can autonomously guide you.'}
+                  : 'In space there are no doctors on board. NASA flight surgeons are down on Earth with a 14+ minute communication delay. Check in on your sleep, mental health, pain, and habits so HelioMed can guide you offline.'}
               </p>
             </div>
           </div>

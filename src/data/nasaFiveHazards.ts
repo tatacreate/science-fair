@@ -108,7 +108,7 @@ export function evaluateNasaFiveHazards(input: HazardEvalInput): NasaHazardStatu
   let distLabel = isEarthOrbit ? 'Near Earth' : 'Offline Mode Active';
   if (radStatus === 'RED' || activeScenarioId === 'scenario-decompression' || activeScenarioId === 'osdr-630-test') {
     distStatus = 'RED';
-    distLabel = 'Autonomous SOS';
+    distLabel = 'Offline SOS';
   }
 
   // 4. Altered Gravity Fields

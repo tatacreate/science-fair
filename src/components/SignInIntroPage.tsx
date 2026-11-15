@@ -85,7 +85,7 @@ export const SignInIntroPage: React.FC<SignInIntroPageProps> = ({
               HelioMed · 100% Offline Deep-Space Health System
             </p>
             <h1 className="text-3xl sm:text-5xl font-serif font-black tracking-tight text-slate-100 leading-tight [text-wrap:balance]">
-              Autonomous Healthcare for Astronauts Far from Earth
+              Onboard Healthcare for Astronauts Far from Earth
             </h1>
             <p className="text-sm sm:text-base text-slate-300 leading-relaxed">
               No doctors aboard and a 14+ minute signal delay to Earth. HelioMed runs completely offline so crew can inspect their 3D body twin, log health checks, and follow step-by-step emergency guidance while syncing forms to Ground Flight Surgeons.
@@ -146,7 +146,7 @@ export const SignInIntroPage: React.FC<SignInIntroPageProps> = ({
         {/* Footer */}
         <footer className="border-t border-slate-900 bg-slate-950 py-5 px-6 text-xs text-slate-500 font-mono">
           <div className="max-w-7xl mx-auto flex flex-col md:flex-row items-center justify-between gap-3">
-            <span>HelioMed · Autonomous Medical Station</span>
+            <span>HelioMed · Space Medical Station</span>
             <div className="flex flex-wrap items-center justify-center gap-3">
               <a
                 href="https://www.nasa.gov/hrp/hazards/"
@@ -399,7 +399,7 @@ export const SignInIntroPage: React.FC<SignInIntroPageProps> = ({
 
       <footer className="border-t border-slate-900 bg-slate-950 py-4 px-6 text-xs text-slate-500 font-mono">
         <div className="max-w-7xl mx-auto flex flex-col md:flex-row items-center justify-between gap-3">
-          <span>HelioMed · Autonomous Deep-Space Station</span>
+          <span>HelioMed · Deep-Space Medical Station</span>
           <div className="flex flex-wrap items-center justify-center gap-3">
             <a
               href="https://www.nasa.gov/hrp/hazards/"

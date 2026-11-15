@@ -264,7 +264,7 @@ export const DailySelfCheckinModal: React.FC<DailySelfCheckinModalProps> = ({
             <div>
               <div className="flex items-center gap-2">
                 <h3 className="text-base font-bold text-slate-100">
-                  Daily Autonomous Astronaut Medical Self-Check
+                  Daily Astronaut Medical Self-Check
                 </h3>
                 <span className="px-2 py-0.5 rounded bg-cyan-950 border border-cyan-700 text-[10px] font-mono text-cyan-300 font-bold">
                   OFFLINE CAPSULE MODE
@@ -288,7 +288,7 @@ export const DailySelfCheckinModal: React.FC<DailySelfCheckinModalProps> = ({
         {/* Content */}
         <div className="p-5 sm:p-6 overflow-y-auto space-y-6 text-slate-200">
           {flightGuidance ? (
-            /* Post-Submission Offline Autonomous Feedback */
+            /* Post-Submission Offline Guidance Feedback */
             <div className="space-y-4">
               <div className="p-4 rounded-xl bg-emerald-950/60 border border-emerald-800 flex items-start gap-3">
                 <CheckCircle2 className="w-6 h-6 text-emerald-400 flex-shrink-0 mt-0.5" />

@@ -27,7 +27,7 @@ export const NasaReferenceModal: React.FC<NasaReferenceModalProps> = ({ isOpen, 
     {
       title: 'NASA-STD-3001 Volume 2 & OSDR Studies (OSD-511, 484, 352, 630, 102)',
       detail:
-        'Sets operational vital & cabin thresholds (CO₂, pressure, SpO₂, ONSD) alongside embedded offline spaceflight cohort benchmarks for autonomous onboard triage.',
+        'Sets operational vital & cabin thresholds (CO₂, pressure, SpO₂, ONSD) alongside embedded offline spaceflight cohort benchmarks for offline onboard triage.',
       tag: 'Thresholds & OSDR Data',
       url: null as string | null,
     },

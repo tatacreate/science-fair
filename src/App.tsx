@@ -661,7 +661,7 @@ export default function App() {
     );
   }
 
-  // 3. Astronaut Autonomous Medical Station
+  // 3. Astronaut Medical Station
   const todayStr = new Date().toISOString().split('T')[0];
   const latestCheckin = dailyCheckins[0] || currentAstronaut?.latestCheckin || null;
   const hasSubmittedToday =
