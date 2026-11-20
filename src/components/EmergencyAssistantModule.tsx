@@ -12,15 +12,21 @@ import {
   Volume2,
   VolumeX,
   Timer,
-  Package,
   RotateCcw,
   Radio,
   ShieldAlert,
   Play,
   HeartHandshake,
+  Award,
+  Sparkles,
+  X,
 } from 'lucide-react';
 import { SimulationScenario } from '../types/heliomed';
 import { SPACEFLIGHT_SCENARIOS } from '../data/spaceflightScenarios';
+import {
+  EmergencyHardwareIllustration,
+  EmergencyToolKey,
+} from './EmergencyHardwareIllustration';
 
 export interface EmergencyLogRecord {
   id: string;
@@ -35,6 +41,7 @@ interface EmergencyStep {
   stepTitle: string;
   simpleAction: string;
   hardwareToGrab: string;
+  toolKey: EmergencyToolKey;
   whyThisHelps: string;
   timerSeconds: number;
   calmBreathCue?: boolean;
@@ -77,6 +84,7 @@ const EMERGENCY_GUIDES: EmergencyGuide[] = [
         simpleAction:
           'Pull the green oxygen mask firmly over your nose and mouth and twist the green valve open until you hear steady airflow.',
         hardwareToGrab: 'Green O2 Bottle + Clear Seal Mask (Emergency Rack B2)',
+        toolKey: 'o2_mask_bottle',
         whyThisHelps:
           'Delivers 100% pure oxygen directly into your lungs so your brain stays clear even if cabin air pressure is dropping.',
         timerSeconds: 45,
@@ -88,6 +96,7 @@ const EMERGENCY_GUIDES: EmergencyGuide[] = [
         simpleAction:
           'Look at the wall Pressure gauge. If below 95 kPa (or below 54 kPa in Moon Base), close the module hatch latch and turn on N2/O2 repressurization.',
         hardwareToGrab: 'Manual Bulkhead Hatch Lever + Wall ECLSS Repress Switch',
+        toolKey: 'hatch_repress',
         whyThisHelps:
           'Stops air from escaping into space and prevents decompression sickness ("the bends").',
         timerSeconds: 60,
@@ -98,6 +107,7 @@ const EMERGENCY_GUIDES: EmergencyGuide[] = [
         simpleAction:
           'Clip the pulse oximeter onto a warm finger and sit still for 30 seconds while breathing slowly through the mask.',
         hardwareToGrab: 'Fingertip Pulse Oximeter (Medical Pouch 1)',
+        toolKey: 'pulse_oximeter',
         whyThisHelps:
           'Proves your blood oxygen is climbing back above 95% and confirms no sharp shoulder/knee gas-bubble pain.',
         timerSeconds: 30,
@@ -128,6 +138,7 @@ const EMERGENCY_GUIDES: EmergencyGuide[] = [
         simpleAction:
           'Float away from tight sleeping corners into the center aisle and flip the Cabin Circulation Fans to MAX.',
         hardwareToGrab: 'Module Airflow Control Panel (Fan Boost Switch)',
+        toolKey: 'fan_boost',
         whyThisHelps:
           'Breaks up stagnant invisible pockets of exhaled carbon dioxide around your nose and mouth.',
         timerSeconds: 30,
@@ -139,6 +150,7 @@ const EMERGENCY_GUIDES: EmergencyGuide[] = [
         simpleAction:
           'Follow the yellow arrows on the ECLSS Air Rack to latch a fresh white LiOH scrubber cartridge in place.',
         hardwareToGrab: 'Fresh LiOH / Amine Scrubber Canister (Locker A4)',
+        toolKey: 'lioh_scrubber',
         whyThisHelps:
           'Captures trapped carbon dioxide out of the cabin air so headache pressure eases quickly.',
         timerSeconds: 90,
@@ -149,6 +161,7 @@ const EMERGENCY_GUIDES: EmergencyGuide[] = [
         simpleAction:
           'Swallow 1 ibuprofen tablet (400–600 mg) with a full 500 mL water pouch, and use 100% O2 mask for 10 minutes if headache persists.',
         hardwareToGrab: 'Oral Pain Pack (Bin 3-Blue) + 500 mL Water Pouch',
+        toolKey: 'pain_pack_water',
         whyThisHelps:
           'Calms swollen blood vessels in the brain caused by high CO2.',
         timerSeconds: 45,
@@ -178,6 +191,7 @@ const EMERGENCY_GUIDES: EmergencyGuide[] = [
         simpleAction:
           'Stop non-essential tasks and crawl inside the central core rack surrounded by water bladders and food packs (or regolith bunker at Surface Base).',
         hardwareToGrab: 'Core Water-Wall Shelter Zone + Personal Badge Dosimeter',
+        toolKey: 'water_wall_dosimeter',
         whyThisHelps:
           'Hydrogen inside water packs absorbs dangerous solar protons before they reach your organs.',
         timerSeconds: 45,
@@ -189,6 +203,7 @@ const EMERGENCY_GUIDES: EmergencyGuide[] = [
         simpleAction:
           'Hit the attitude preset "SPE-SHIELD" (if in spacecraft) so heavy propellant and water tanks sit between you and the Sun.',
         hardwareToGrab: 'Flight Console Attitude Preset (SPE-SHIELD)',
+        toolKey: 'spe_attitude_console',
         whyThisHelps:
           'Adds an extra meter of dense mass shielding while the solar wave passes.',
         timerSeconds: 30,
@@ -199,6 +214,7 @@ const EMERGENCY_GUIDES: EmergencyGuide[] = [
         simpleAction:
           'Take 1 Radiation Countermeasure blister pack (N-acetylcysteine + Vitamin C/E) with water, plus anti-nausea tablet if queasy.',
         hardwareToGrab: 'Radiation Kit (Orange Pouch R-1)',
+        toolKey: 'radiation_kit_r1',
         whyThisHelps:
           'Neutralizes cellular free radicals created by radiation particles during the storm.',
         timerSeconds: 60,
@@ -228,6 +244,7 @@ const EMERGENCY_GUIDES: EmergencyGuide[] = [
         simpleAction:
           'Strap into a seat or lie flat on the floor with your legs raised slightly higher than your chest.',
         hardwareToGrab: 'Bungee Restraint Strap or Floor Footloops',
+        toolKey: 'bungee_footloops',
         whyThisHelps:
           'Instantly restores blood flow to your brain so you do not faint or fall.',
         timerSeconds: 30,
@@ -239,6 +256,7 @@ const EMERGENCY_GUIDES: EmergencyGuide[] = [
         simpleAction:
           'Check blood sugar if unsure. If under 70 mg/dL—or if sweaty & shaky—squeeze 1 entire 15g Glucose Gel pouch into your mouth.',
         hardwareToGrab: 'Orange Glucose Gel Pouch (15g) + Glucometer',
+        toolKey: 'glucose_gel_meter',
         whyThisHelps:
           'Simple sugar absorbs rapidly into the bloodstream to refuel your brain in 10–15 minutes.',
         timerSeconds: 60,
@@ -249,6 +267,7 @@ const EMERGENCY_GUIDES: EmergencyGuide[] = [
         simpleAction:
           'Sip 500 mL of Oral Rehydration / Electrolyte mix to rebuild blood pressure, especially before standing in 0.16G–0.38G gravity.',
         hardwareToGrab: 'Electrolyte Mix + 500 mL Water Pouch',
+        toolKey: 'electrolyte_water',
         whyThisHelps:
           'Restores lost blood volume so your heart does not have to race when you sit or stand up.',
         timerSeconds: 45,
@@ -278,6 +297,7 @@ const EMERGENCY_GUIDES: EmergencyGuide[] = [
         simpleAction:
           'Hold the sterile eyewash cup over the irritated eye, tilt gently, and blink repeatedly for 60 seconds to float dust particles out.',
         hardwareToGrab: 'Sterile Eyewash Cup + Saline Bottle (Airlock Med Kit)',
+        toolKey: 'eyewash_saline',
         whyThisHelps:
           'Rubbing grinds razor-sharp regolith into the cornea; continuous saline floats particles out harmlessly.',
         timerSeconds: 60,
@@ -288,6 +308,7 @@ const EMERGENCY_GUIDES: EmergencyGuide[] = [
         simpleAction:
           'If vision is blurry without dust, cover one eye and run the Amsler Grid + Ultrasound ONSD caliper in the Exam Workbench.',
         hardwareToGrab: 'Amsler Eye Screen + Handheld Ultrasound Probe',
+        toolKey: 'amsler_ultrasound',
         whyThisHelps:
           'Separates a surface eye scratch from zero-gravity brain fluid pressure (SANS) behind the eye.',
         timerSeconds: 45,
@@ -298,6 +319,7 @@ const EMERGENCY_GUIDES: EmergencyGuide[] = [
         simpleAction:
           'For dust scratch: use 1 drop sterile lubricating gel & shield eye. For ONSD swelling: schedule 45 min Lower Body Suction (LBNP) & try backup +1.25D Space Anticipation Glasses.',
         hardwareToGrab: 'Lubricating Eye Drops OR +1.25D Space Glasses',
+        toolKey: 'eye_drops_glasses',
         whyThisHelps:
           'Protects healing eye tissue or immediately sharpens near reading vision while ground doctors review your ultrasound.',
         timerSeconds: 30,
@@ -310,18 +332,29 @@ const EMERGENCY_GUIDES: EmergencyGuide[] = [
 
 interface EmergencyAssistantModuleProps {
   astronautName: string;
+  currentXp: number;
   onSimulateEmergency: (scenario: SimulationScenario | null, regionId: string | null) => void;
   onLogEmergencyXp: (xp: number) => void;
+  onOpenBodyTwin?: () => void;
 }
 
 export const EmergencyAssistantModule: React.FC<EmergencyAssistantModuleProps> = ({
   astronautName,
+  currentXp,
   onSimulateEmergency,
   onLogEmergencyXp,
+  onOpenBodyTwin,
 }) => {
   const [selectedGuideId, setSelectedGuideId] = useState<string>('trouble_breathing');
   const [currentStepIdx, setCurrentStepIdx] = useState<number>(0);
   const [completedSteps, setCompletedSteps] = useState<Record<number, boolean>>({});
+  const [runCompleted, setRunCompleted] = useState<boolean>(false);
+  const [completionBanner, setCompletionBanner] = useState<{
+    title: string;
+    xpEarned: number;
+    newTotalXp: number;
+  } | null>(null);
+  const [liveDrillActiveTitle, setLiveDrillActiveTitle] = useState<string | null>(null);
   const [secondsLeft, setSecondsLeft] = useState<number>(EMERGENCY_GUIDES[0].steps[0].timerSeconds);
   const [isTimerRunning, setIsTimerRunning] = useState<boolean>(false);
   const [soundEnabled, setSoundEnabled] = useState<boolean>(false);
@@ -402,7 +435,18 @@ export const EmergencyAssistantModule: React.FC<EmergencyAssistantModuleProps> =
     setSelectedGuideId(guide.id);
     setCurrentStepIdx(0);
     setCompletedSteps({});
+    setRunCompleted(false);
+    setCompletionBanner(null);
     setSecondsLeft(guide.steps[0].timerSeconds);
+    setIsTimerRunning(false);
+  };
+
+  const handleRestartDrill = () => {
+    setCurrentStepIdx(0);
+    setCompletedSteps({});
+    setRunCompleted(false);
+    setCompletionBanner(null);
+    setSecondsLeft(activeGuide.steps[0].timerSeconds);
     setIsTimerRunning(false);
   };
 
@@ -414,6 +458,12 @@ export const EmergencyAssistantModule: React.FC<EmergencyAssistantModuleProps> =
 
   const handleCompleteStep = () => {
     const nextDone = { ...completedSteps, [currentStepIdx]: true };
+    if (currentStepIdx === activeGuide.steps.length - 1) {
+      // Ensure every step up through the final step displays checked on finish
+      activeGuide.steps.forEach((_, idx) => {
+        nextDone[idx] = true;
+      });
+    }
     setCompletedSteps(nextDone);
     playSoftTone(587, 0.16);
 
@@ -421,34 +471,56 @@ export const EmergencyAssistantModule: React.FC<EmergencyAssistantModuleProps> =
       handleChangeStep(currentStepIdx + 1);
     } else {
       setIsTimerRunning(false);
-      // Save completion log for Earth Flight Surgeons
-      const doneCount = Object.values(nextDone).filter(Boolean).length;
-      const newRecord: EmergencyLogRecord = {
-        id: `emg-${Date.now()}`,
-        emergencyTitle: activeGuide.shortTitle,
-        timestampUtc: new Date().toLocaleTimeString('en-US', {
-          hour: '2-digit',
-          minute: '2-digit',
-          timeZone: 'UTC',
-        }) + ' UTC',
-        stepsCompleted: doneCount,
-        totalSteps: activeGuide.steps.length,
-        outcomeNote: `Crew ${astronautName} completed ${doneCount}/${activeGuide.steps.length} guided steps. Queued for Earth DSN sync.`,
-      };
-      const updated = [newRecord, ...emergencyLogs.slice(0, 4)];
-      setEmergencyLogs(updated);
-      try {
-        localStorage.setItem('heliomed_emergency_logs', JSON.stringify(updated));
-      } catch {
-        // ignore
+      if (!runCompleted) {
+        const doneCount = activeGuide.steps.length;
+        const newRecord: EmergencyLogRecord = {
+          id: `emg-${Date.now()}`,
+          emergencyTitle: activeGuide.shortTitle,
+          timestampUtc:
+            new Date().toLocaleTimeString('en-US', {
+              hour: '2-digit',
+              minute: '2-digit',
+              timeZone: 'UTC',
+            }) + ' UTC',
+          stepsCompleted: doneCount,
+          totalSteps: activeGuide.steps.length,
+          outcomeNote: `Crew ${astronautName} completed ${doneCount}/${activeGuide.steps.length} guided steps (+60 XP). Queued for Earth DSN sync.`,
+        };
+        const updated = [newRecord, ...emergencyLogs.slice(0, 4)];
+        setEmergencyLogs(updated);
+        try {
+          localStorage.setItem('heliomed_emergency_logs', JSON.stringify(updated));
+        } catch {
+          // ignore
+        }
+        onLogEmergencyXp(60);
+        setRunCompleted(true);
+        setCompletionBanner({
+          title: activeGuide.shortTitle,
+          xpEarned: 60,
+          newTotalXp: currentXp + 60,
+        });
+        playSoftTone(784, 0.28);
+      } else {
+        // Re-display banner if user clicks Finish again before resetting
+        setCompletionBanner({
+          title: activeGuide.shortTitle,
+          xpEarned: 60,
+          newTotalXp: currentXp,
+        });
       }
-      onLogEmergencyXp(60);
     }
   };
 
   const handleTriggerDrillOnDashboard = () => {
     const sc = SPACEFLIGHT_SCENARIOS.find((s) => s.id === activeGuide.linkedScenarioId) || null;
     onSimulateEmergency(sc, activeGuide.targetRegionId);
+    setLiveDrillActiveTitle(activeGuide.shortTitle);
+  };
+
+  const handleClearDrill = () => {
+    onSimulateEmergency(null, null);
+    setLiveDrillActiveTitle(null);
   };
 
   const renderIcon = (name: EmergencyGuide['iconName'], cls = 'w-4 h-4') => {
@@ -496,6 +568,11 @@ export const EmergencyAssistantModule: React.FC<EmergencyAssistantModuleProps> =
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
+          <div className="px-3.5 py-1.5 rounded-xl bg-amber-950/70 border border-amber-400/70 text-amber-200 text-xs font-mono font-extrabold flex items-center gap-1.5 tabular-nums shadow-[0_0_12px_rgba(245,158,11,0.28)]">
+            <Award className="w-4 h-4 text-amber-300" />
+            <span>Total XP: {currentXp} XP</span>
+          </div>
+
           <button
             type="button"
             onClick={() => setSoundEnabled((prev) => !prev)}
@@ -504,12 +581,12 @@ export const EmergencyAssistantModule: React.FC<EmergencyAssistantModuleProps> =
             {soundEnabled ? (
               <>
                 <Volume2 className="w-3.5 h-3.5 text-cyan-400" />
-                <span>Audio Cues ON</span>
+                <span>Audio ON</span>
               </>
             ) : (
               <>
                 <VolumeX className="w-3.5 h-3.5 text-slate-400" />
-                <span>Audio Cues Muted</span>
+                <span>Audio Muted</span>
               </>
             )}
           </button>
@@ -517,7 +594,7 @@ export const EmergencyAssistantModule: React.FC<EmergencyAssistantModuleProps> =
           <button
             type="button"
             onClick={handleTriggerDrillOnDashboard}
-            className="px-3.5 py-1.5 rounded-lg bg-rose-700 hover:bg-rose-600 text-white text-xs font-mono font-bold flex items-center gap-1.5 cursor-pointer whitespace-nowrap shrink-0"
+            className="px-3.5 py-1.5 rounded-lg bg-rose-600 hover:bg-rose-500 text-white text-xs font-mono font-bold flex items-center gap-1.5 cursor-pointer whitespace-nowrap shrink-0 shadow-[0_0_12px_rgba(244,63,94,0.4)]"
           >
             <Play className="w-3.5 h-3.5" />
             <span>Run Live Drill on 3D Model</span>
@@ -525,14 +602,87 @@ export const EmergencyAssistantModule: React.FC<EmergencyAssistantModuleProps> =
 
           <button
             type="button"
-            onClick={() => onSimulateEmergency(null, null)}
-            className="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-mono flex items-center gap-1.5 cursor-pointer whitespace-nowrap shrink-0"
+            onClick={handleClearDrill}
+            className="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 border border-slate-600 text-slate-200 text-xs font-mono flex items-center gap-1.5 cursor-pointer whitespace-nowrap shrink-0"
           >
             <RotateCcw className="w-3.5 h-3.5" />
             <span>Clear Drill</span>
           </button>
         </div>
       </div>
+
+      {/* Live Drill Active Confirmation Notice */}
+      {liveDrillActiveTitle && (
+        <div className="p-3.5 rounded-xl bg-rose-950/60 border border-rose-400/70 flex flex-wrap items-center justify-between gap-3">
+          <div className="flex items-center gap-2.5 text-xs text-rose-100">
+            <span className="w-2.5 h-2.5 rounded-full bg-rose-400 shadow-[0_0_8px_#fb7185] shrink-0" />
+            <span>
+              <strong>Live Drill Active:</strong> Cabin telemetry &amp; 3D Body Twin updated for{' '}
+              <strong>{liveDrillActiveTitle}</strong>.
+            </span>
+          </div>
+          <div className="flex items-center gap-2">
+            {onOpenBodyTwin && (
+              <button
+                type="button"
+                onClick={onOpenBodyTwin}
+                className="px-3 py-1.5 rounded-lg bg-cyan-400 hover:bg-cyan-300 text-slate-950 text-xs font-extrabold cursor-pointer whitespace-nowrap"
+              >
+                See on 3D Body Twin &rarr;
+              </button>
+            )}
+            <button
+              type="button"
+              onClick={handleClearDrill}
+              className="px-2.5 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold cursor-pointer"
+            >
+              Stop Drill
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Celebratory Protocol Completion Pop-Up Banner */}
+      {completionBanner && (
+        <div className="p-4 sm:p-5 rounded-2xl bg-gradient-to-r from-emerald-950 via-slate-900 to-cyan-950 border-2 border-emerald-400 shadow-[0_0_24px_rgba(16,185,129,0.3)] flex flex-wrap items-center justify-between gap-4">
+          <div className="flex items-start gap-3">
+            <div className="p-2.5 rounded-xl bg-emerald-400 text-slate-950 shadow-[0_0_12px_rgba(52,211,153,0.5)] shrink-0">
+              <Sparkles className="w-5 h-5" />
+            </div>
+            <div>
+              <div className="flex flex-wrap items-center gap-2">
+                <h4 className="text-base font-extrabold text-white">
+                  Emergency Protocol Finished!
+                </h4>
+                <span className="px-2.5 py-0.5 rounded-lg bg-amber-400 text-slate-950 text-xs font-mono font-extrabold">
+                  +{completionBanner.xpEarned} XP EARNED
+                </span>
+              </div>
+              <p className="text-xs text-emerald-100 mt-1">
+                You completed <strong>{completionBanner.title}</strong>. Your total readiness score is now{' '}
+                <strong className="text-amber-300 font-mono">{currentXp} XP</strong> (saved locally on your device).
+              </p>
+            </div>
+          </div>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={handleRestartDrill}
+              className="px-3.5 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 border border-slate-500 text-white text-xs font-bold cursor-pointer"
+            >
+              Practice Again
+            </button>
+            <button
+              type="button"
+              onClick={() => setCompletionBanner(null)}
+              className="p-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-600 cursor-pointer"
+              aria-label="Dismiss completion message"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* What is happening right now? Selector */}
       <div>
@@ -632,36 +782,32 @@ export const EmergencyAssistantModule: React.FC<EmergencyAssistantModuleProps> =
               </p>
             </div>
 
-            {/* Exact Hardware / Locker + Why This Helps */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-              <div className="p-3.5 rounded-xl bg-amber-950/30 border border-amber-800/50 space-y-1">
-                <div className="flex items-center gap-1.5 text-[11px] font-mono font-bold text-amber-300 uppercase">
-                  <Package className="w-3.5 h-3.5" />
-                  <span>Grab This Exact Kit Item</span>
-                </div>
-                <p className="text-xs text-slate-100 font-semibold leading-relaxed">
-                  {currentStep.hardwareToGrab}
-                </p>
-              </div>
+            {/* Exact Visual Tool Illustration + Why This Helps */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5 items-stretch">
+              <EmergencyHardwareIllustration
+                toolKey={currentStep.toolKey}
+                hardwareLabel={currentStep.hardwareToGrab}
+              />
 
-              <div className="p-3.5 rounded-xl bg-cyan-950/30 border border-cyan-800/50 space-y-1">
-                <div className="flex items-center gap-1.5 text-[11px] font-mono font-bold text-cyan-300 uppercase">
-                  <HeartHandshake className="w-3.5 h-3.5" />
-                  <span>Why This Works (Plain Words)</span>
+              <div className="p-4 rounded-xl bg-cyan-950/35 border border-cyan-700/60 flex flex-col justify-between space-y-3">
+                <div className="space-y-2">
+                  <div className="flex items-center gap-1.5 text-[11px] font-mono font-bold text-cyan-300 uppercase">
+                    <HeartHandshake className="w-4 h-4 shrink-0" />
+                    <span>Why This Works (Plain Words)</span>
+                  </div>
+                  <p className="text-xs sm:text-sm text-slate-100 leading-relaxed">
+                    {currentStep.whyThisHelps}
+                  </p>
                 </div>
-                <p className="text-xs text-slate-200 leading-relaxed">
-                  {currentStep.whyThisHelps}
-                </p>
-              </div>
-            </div>
 
-            {/* Recheck Prompt */}
-            <div className="p-3 rounded-lg bg-slate-900 border border-slate-800 text-xs text-slate-300 flex items-start gap-2">
-              <CheckCircle2 className="w-4 h-4 text-emerald-400 mt-0.5 flex-shrink-0" />
-              <span>
-                <strong className="text-emerald-300">Verify Before Moving On:</strong>{' '}
-                {currentStep.recheckPrompt}
-              </span>
+                <div className="p-3 rounded-lg bg-slate-900/90 border border-slate-700/80 text-xs text-slate-200 flex items-start gap-2">
+                  <CheckCircle2 className="w-4 h-4 text-emerald-400 mt-0.5 flex-shrink-0" />
+                  <span>
+                    <strong className="text-emerald-300">Verify Before Moving On:</strong>{' '}
+                    {currentStep.recheckPrompt}
+                  </span>
+                </div>
+              </div>
             </div>
           </div>
 
@@ -671,25 +817,46 @@ export const EmergencyAssistantModule: React.FC<EmergencyAssistantModuleProps> =
               type="button"
               disabled={currentStepIdx === 0}
               onClick={() => handleChangeStep(Math.max(0, currentStepIdx - 1))}
-              className="px-3.5 py-2 rounded-xl bg-slate-900 border border-slate-700 text-slate-300 text-xs font-mono flex items-center gap-1.5 disabled:opacity-40 cursor-pointer whitespace-nowrap shrink-0"
+              className="px-3.5 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 border border-slate-600 text-slate-100 text-xs font-bold flex items-center gap-1.5 disabled:opacity-40 cursor-pointer whitespace-nowrap shrink-0"
             >
               <ArrowLeft className="w-3.5 h-3.5" />
               <span>Previous Step</span>
             </button>
 
-            <button
-              type="button"
-              onClick={handleCompleteStep}
-              className="px-5 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-mono font-bold flex items-center gap-2 cursor-pointer whitespace-nowrap shrink-0"
-            >
-              <CheckCircle2 className="w-4 h-4" />
-              <span>
-                {currentStepIdx < activeGuide.steps.length - 1
-                  ? 'Step Done — Go To Next Step'
-                  : 'Finish Emergency Protocol (+60 XP)'}
-              </span>
-              <ArrowRight className="w-3.5 h-3.5" />
-            </button>
+            <div className="flex flex-wrap items-center gap-2">
+              {runCompleted && currentStepIdx === activeGuide.steps.length - 1 && (
+                <button
+                  type="button"
+                  onClick={handleRestartDrill}
+                  className="px-4 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 border border-slate-600 text-slate-100 text-xs font-bold flex items-center gap-1.5 cursor-pointer whitespace-nowrap shrink-0"
+                >
+                  <RotateCcw className="w-3.5 h-3.5" />
+                  <span>Restart Drill</span>
+                </button>
+              )}
+
+              <button
+                type="button"
+                onClick={handleCompleteStep}
+                className={`px-5 py-2.5 rounded-xl text-xs font-extrabold flex items-center gap-2 cursor-pointer whitespace-nowrap shrink-0 transition-all ${
+                  runCompleted && currentStepIdx === activeGuide.steps.length - 1
+                    ? 'bg-emerald-900 border-2 border-emerald-400 text-emerald-100 shadow-[0_0_16px_rgba(16,185,129,0.35)]'
+                    : 'bg-gradient-to-r from-emerald-500 to-cyan-500 hover:from-emerald-400 hover:to-cyan-400 text-slate-950 shadow-[0_0_18px_rgba(16,185,129,0.4)]'
+                }`}
+              >
+                <CheckCircle2 className="w-4 h-4" />
+                <span>
+                  {currentStepIdx < activeGuide.steps.length - 1
+                    ? 'Step Done — Go To Next Step'
+                    : runCompleted
+                    ? 'Protocol Finished! (+60 XP Added)'
+                    : 'Finish Emergency Protocol (+60 XP)'}
+                </span>
+                {currentStepIdx < activeGuide.steps.length - 1 && (
+                  <ArrowRight className="w-3.5 h-3.5" />
+                )}
+              </button>
+            </div>
           </div>
         </div>
 

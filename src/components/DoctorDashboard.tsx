@@ -471,17 +471,17 @@ export const DoctorDashboard: React.FC<DoctorDashboardProps> = ({
           </div>
 
           {/* Quick Mission Selector & Control Affordances */}
-          <div className="flex flex-wrap items-center gap-3 text-xs font-mono">
+          <div className="flex flex-wrap items-center gap-2.5 text-xs">
             {/* Active Mission Switcher Dropdown */}
-            <div className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-slate-900 border border-slate-800">
-              <span className="text-slate-400">MISSION:</span>
+            <div className="flex items-center gap-2 px-3 py-2 rounded-xl bg-slate-800 border border-slate-600">
+              <span className="text-slate-300 font-bold">MISSION:</span>
               <select
                 value={activeCode}
                 onChange={(e) => {
                   setActiveCode(e.target.value);
                   setInspectedAstronaut(null);
                 }}
-                className="bg-transparent text-amber-300 font-bold outline-none cursor-pointer"
+                className="bg-transparent text-amber-300 font-mono font-bold outline-none cursor-pointer"
               >
                 {missions.map((m) => (
                   <option key={m.code} value={m.code} className="bg-slate-900 text-slate-200">
@@ -495,18 +495,18 @@ export const DoctorDashboard: React.FC<DoctorDashboardProps> = ({
             <button
               type="button"
               onClick={() => setIsCreateFormModalOpen(true)}
-              className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white font-bold rounded-xl transition cursor-pointer shadow-md"
+              className="flex items-center gap-1.5 px-3.5 py-2 bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-extrabold rounded-xl transition cursor-pointer shadow-[0_0_14px_rgba(16,185,129,0.4)]"
               title="Only Doctors can author Google Forms"
             >
               <FileSpreadsheet className="w-3.5 h-3.5" />
-              <span>Dispatch Google Form</span>
+              <span>Send Crew Survey</span>
             </button>
 
             {/* Create Mission Button */}
             <button
               type="button"
               onClick={() => setIsCreateModalOpen(true)}
-              className="flex items-center gap-1.5 px-3 py-1.5 bg-amber-600 hover:bg-amber-500 text-slate-950 font-bold rounded-xl transition cursor-pointer shadow-md"
+              className="flex items-center gap-1.5 px-3.5 py-2 bg-amber-400 hover:bg-amber-300 text-slate-950 font-extrabold rounded-xl transition cursor-pointer shadow-[0_0_14px_rgba(245,158,11,0.4)]"
             >
               <Plus className="w-3.5 h-3.5" />
               <span>New Mission</span>
@@ -516,10 +516,10 @@ export const DoctorDashboard: React.FC<DoctorDashboardProps> = ({
             <button
               type="button"
               onClick={onReturnHome}
-              className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-900 hover:bg-slate-800 border border-slate-800 text-slate-300 rounded-xl transition cursor-pointer"
+              className="flex items-center gap-1.5 px-3.5 py-2 bg-slate-800 hover:bg-slate-700 border border-slate-600 text-slate-100 font-semibold rounded-xl transition cursor-pointer"
               title="Return to Home Landing"
             >
-              <Home className="w-3.5 h-3.5 text-cyan-400" />
+              <Home className="w-3.5 h-3.5 text-cyan-300" />
               <span>Home</span>
             </button>
 
@@ -527,7 +527,7 @@ export const DoctorDashboard: React.FC<DoctorDashboardProps> = ({
             <button
               type="button"
               onClick={onSignOut}
-              className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-900 hover:bg-rose-950/60 border border-slate-800 hover:border-rose-900/60 text-slate-400 hover:text-rose-300 rounded-xl transition cursor-pointer"
+              className="flex items-center gap-1.5 px-3.5 py-2 bg-slate-800 hover:bg-rose-700 border border-slate-600 hover:border-rose-400 text-slate-100 font-semibold rounded-xl transition cursor-pointer"
               title="Sign Out"
             >
               <LogOut className="w-3.5 h-3.5" />
@@ -540,35 +540,35 @@ export const DoctorDashboard: React.FC<DoctorDashboardProps> = ({
       {/* Main Body */}
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-6 space-y-6">
         {/* Mission Banner & Telemetry Latency Indicator */}
-        <div className="p-5 rounded-2xl bg-slate-900/90 border border-slate-800 flex flex-col md:flex-row items-start md:items-center justify-between gap-4 shadow-xl">
+        <div className="p-5 rounded-2xl bg-slate-900/95 border border-amber-500/40 flex flex-col md:flex-row items-start md:items-center justify-between gap-4 shadow-xl">
           <div className="space-y-1">
             <div className="flex items-center gap-2">
-              <span className="px-2.5 py-0.5 rounded text-xs font-mono font-bold bg-amber-950 text-amber-300 border border-amber-700">
-                CODE: {currentMission.code}
+              <span className="px-2.5 py-0.5 rounded-lg text-xs font-mono font-bold bg-amber-400 text-slate-950">
+                {currentMission.code}
               </span>
-              <h2 className="text-base sm:text-lg font-bold text-slate-100">
+              <h2 className="text-base sm:text-lg font-extrabold text-white">
                 {currentMission.name}
               </h2>
             </div>
-            <p className="text-xs text-slate-400 leading-relaxed max-w-2xl">
-              {currentMission.description} &bull; Target Destination: <strong className="text-slate-200">{currentMission.destination}</strong> &bull; Flight Day {currentMission.transitDay}
+            <p className="text-xs text-slate-300 leading-relaxed max-w-2xl">
+              {currentMission.description} &bull; Destination: <strong className="text-white">{currentMission.destination}</strong> &bull; Day {currentMission.transitDay}
             </p>
           </div>
 
           <div className="flex items-center gap-3 font-mono text-xs">
-            <div className="px-3.5 py-2 rounded-xl bg-slate-950 border border-slate-800 flex items-center gap-2">
-              <Radio className="w-4 h-4 text-amber-400" />
+            <div className="px-3.5 py-2 rounded-xl bg-slate-800 border border-slate-600 flex items-center gap-2">
+              <Radio className="w-4 h-4 text-amber-300" />
               <div>
-                <span className="text-[10px] text-slate-500 block">EARTH COMM LAG</span>
+                <span className="text-[10px] text-slate-300 block">EARTH COMM LAG</span>
                 <span className="font-bold text-amber-300">{currentMission.earthDelay}</span>
               </div>
             </div>
 
-            <div className="px-3.5 py-2 rounded-xl bg-slate-950 border border-slate-800 flex items-center gap-2">
-              <Stethoscope className="w-4 h-4 text-cyan-400" />
+            <div className="px-3.5 py-2 rounded-xl bg-slate-800 border border-slate-600 flex items-center gap-2">
+              <Stethoscope className="w-4 h-4 text-cyan-300" />
               <div>
-                <span className="text-[10px] text-slate-500 block">FLIGHT SURGEON</span>
-                <span className="font-bold text-slate-200 truncate max-w-[140px] block">
+                <span className="text-[10px] text-slate-300 block">FLIGHT SURGEON</span>
+                <span className="font-bold text-white truncate max-w-[140px] block">
                   {currentMission.flightSurgeon.split(',')[0]}
                 </span>
               </div>
@@ -578,51 +578,54 @@ export const DoctorDashboard: React.FC<DoctorDashboardProps> = ({
 
         {/* Success Banner */}
         {formCreationSuccess && (
-          <div className="p-4 rounded-xl bg-emerald-950/90 border border-emerald-600 shadow-xl flex items-center gap-3 text-xs text-emerald-300 animate-in fade-in">
-            <CheckCircle2 className="w-5 h-5 text-emerald-400 flex-shrink-0" />
+          <div className="p-4 rounded-xl bg-emerald-900/90 border border-emerald-400 shadow-xl flex items-center gap-3 text-xs text-emerald-100">
+            <CheckCircle2 className="w-5 h-5 text-emerald-300 flex-shrink-0" />
             <span>{formCreationSuccess}</span>
           </div>
         )}
 
         {/* Flight Surgeon Top Console Tabs */}
-        <div className="flex flex-wrap items-center gap-1.5 p-1.5 rounded-xl bg-slate-900 border border-slate-800">
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 p-2 rounded-2xl bg-slate-900 border border-slate-700">
           <button
             type="button"
             onClick={() => setDoctorTab('overview')}
-            className={`px-3.5 py-2 rounded-lg text-xs font-mono font-semibold transition-colors cursor-pointer flex items-center gap-2 whitespace-nowrap ${
+            className={`px-4 py-3 rounded-xl text-xs font-bold border transition-all cursor-pointer flex items-center justify-center gap-2 whitespace-nowrap ${
               doctorTab === 'overview'
-                ? 'bg-cyan-600 text-white'
-                : 'text-slate-300 hover:bg-slate-800'
+                ? 'bg-cyan-400 border-cyan-200 text-slate-950 shadow-[0_0_16px_rgba(34,211,238,0.45)]'
+                : 'bg-slate-800 border-slate-600 text-slate-100 hover:bg-slate-700'
             }`}
           >
+            <span className={`w-2.5 h-2.5 rounded-full ${doctorTab === 'overview' ? 'bg-slate-950' : 'bg-cyan-400'}`} />
             <Stethoscope className="w-4 h-4" />
-            <span>Mission &amp; Crew Overview</span>
+            <span>1. Crew &amp; 3D Monitor</span>
           </button>
 
           <button
             type="button"
             onClick={() => setDoctorTab('timeline')}
-            className={`px-3.5 py-2 rounded-lg text-xs font-mono font-semibold transition-colors cursor-pointer flex items-center gap-2 whitespace-nowrap ${
+            className={`px-4 py-3 rounded-xl text-xs font-bold border transition-all cursor-pointer flex items-center justify-center gap-2 whitespace-nowrap ${
               doctorTab === 'timeline'
-                ? 'bg-cyan-600 text-white'
-                : 'text-slate-300 hover:bg-slate-800'
+                ? 'bg-indigo-500 border-indigo-200 text-white shadow-[0_0_16px_rgba(99,102,241,0.45)]'
+                : 'bg-slate-800 border-slate-600 text-slate-100 hover:bg-slate-700'
             }`}
           >
+            <span className={`w-2.5 h-2.5 rounded-full ${doctorTab === 'timeline' ? 'bg-white' : 'bg-indigo-400'}`} />
             <Calendar className="w-4 h-4" />
-            <span>Mission Health Timeline</span>
+            <span>2. 14-Day Crew Timeline</span>
           </button>
 
           <button
             type="button"
             onClick={() => setDoctorTab('nasa_refs')}
-            className={`px-3.5 py-2 rounded-lg text-xs font-mono font-semibold transition-colors cursor-pointer flex items-center gap-2 whitespace-nowrap ${
+            className={`px-4 py-3 rounded-xl text-xs font-bold border transition-all cursor-pointer flex items-center justify-center gap-2 whitespace-nowrap ${
               doctorTab === 'nasa_refs'
-                ? 'bg-cyan-600 text-white'
-                : 'text-slate-300 hover:bg-slate-800'
+                ? 'bg-amber-400 border-amber-200 text-slate-950 shadow-[0_0_16px_rgba(245,158,11,0.45)]'
+                : 'bg-slate-800 border-slate-600 text-slate-100 hover:bg-slate-700'
             }`}
           >
+            <span className={`w-2.5 h-2.5 rounded-full ${doctorTab === 'nasa_refs' ? 'bg-slate-950' : 'bg-amber-400'}`} />
             <BookOpen className="w-4 h-4" />
-            <span>NASA References</span>
+            <span>3. NASA Risks &amp; Links</span>
           </button>
         </div>
 
@@ -679,10 +682,10 @@ export const DoctorDashboard: React.FC<DoctorDashboardProps> = ({
             <button
               type="button"
               onClick={() => setIsRiskMatrixOpen(true)}
-              className="px-3 py-1.5 rounded-lg bg-slate-950 hover:bg-slate-800 border border-cyan-700/70 text-cyan-300 font-mono text-xs font-bold transition cursor-pointer flex items-center gap-1.5"
+              className="px-3.5 py-2 rounded-xl bg-cyan-500 hover:bg-cyan-400 text-slate-950 font-extrabold text-xs transition cursor-pointer flex items-center gap-1.5 shadow-[0_0_12px_rgba(34,211,238,0.4)]"
             >
-              <ShieldCheck className="w-3.5 h-3.5 text-emerald-400" />
-              <span>View NASA HRP Risk Coverage ({fleetAllSpecificRisks.length})</span>
+              <ShieldCheck className="w-4 h-4" />
+              <span>View All {fleetAllSpecificRisks.length} NASA Health Risks</span>
             </button>
           </div>
 
@@ -1114,10 +1117,10 @@ export const DoctorDashboard: React.FC<DoctorDashboardProps> = ({
                       <button
                         type="button"
                         onClick={() => setInspectedAstronaut(c)}
-                        className={`px-3 py-1.5 rounded-lg font-mono text-xs font-semibold transition cursor-pointer flex items-center gap-1.5 ml-auto ${
+                        className={`px-3.5 py-2 rounded-xl text-xs font-bold border transition-all cursor-pointer flex items-center gap-1.5 ml-auto ${
                           inspectedAstronaut?.id === c.id
-                            ? 'bg-cyan-600 text-white shadow'
-                            : 'bg-slate-800 hover:bg-slate-700 text-slate-300'
+                            ? 'bg-cyan-400 border-cyan-200 text-slate-950 shadow-[0_0_12px_rgba(34,211,238,0.45)]'
+                            : 'bg-slate-800 border-slate-600 hover:bg-slate-700 text-white'
                         }`}
                       >
                         <Eye className="w-3.5 h-3.5" />

@@ -1,9 +1,14 @@
 /**
- * Multi-Environment Spaceflight Health Insights, Routine Prompts, & Plain-Language Guides
- * Covers Spacecraft, Space Station, Pressurized Rover, and Lunar/Planetary Base
+ * Multi-Environment Health Insights, Routine Prompts, & Plain-Language Guides
+ * Covers Spacecraft, Space Station, Pressurized Rover, Lunar/Planetary Base, and Earth Remote/Offline
  */
 
-export type HabitatEnvironmentId = 'spacecraft' | 'space_station' | 'rover' | 'planetary_base';
+export type HabitatEnvironmentId =
+  | 'spacecraft'
+  | 'space_station'
+  | 'rover'
+  | 'planetary_base'
+  | 'earth_remote';
 
 export interface RoutinePromptSpec {
   id: string;
@@ -350,6 +355,77 @@ export const HABITAT_ENVIRONMENTS: HabitatEnvironmentProfile[] = [
           'Verify the measured millimeter reading is below 5.0 mm (Green).',
         ],
         colorZoneHint: 'Green = <5.0 mm · Amber = 5.0–5.7 mm · Red = >=5.8 mm',
+      },
+    ],
+  },
+  {
+    id: 'earth_remote',
+    name: 'On Earth · Remote / Unknown Internet Field Site',
+    shortName: 'Earth (Remote / Offline)',
+    gravityLabel: '1.00 G Earth Gravity',
+    commDelayLabel: '0s Local · Offline Safe',
+    radiationBaselineUSv: 0.1,
+    ambientCO2Baseline: 0.4,
+    pressureBaselineKpa: 101.3,
+    summary:
+      'Operating on Earth in a remote location, expedition camp, or spot with unknown/unavailable internet. Full 1.00G gravity applies, natural atmospheric radiation is low (0.1 µSv/h), and HelioMed runs 100% locally in your browser with zero internet needed.',
+    keyHazards: [
+      {
+        hazard: 'Unknown / Spotty Internet Access',
+        effectOnBody:
+          'Without reliable internet to reach a clinic, daily tracking, dehydration alerts, and clear step-by-step first-response guides must work completely offline.',
+        severityTag: 'MODERATE',
+      },
+      {
+        hazard: 'Heat, Altitude & Dehydration Strain',
+        effectOnBody:
+          'Long outdoor field work, unfamiliar climates, or poor indoor airflow can trigger headaches, muscle cramps, and dizziness.',
+        severityTag: 'HIGH',
+      },
+      {
+        hazard: 'Sleep Disruption & Field Fatigue',
+        effectOnBody:
+          'Shifting schedules or stressful travel cuts deep sleep—slowing focus, mood stability, and physical reaction times.',
+        severityTag: 'MODERATE',
+      },
+    ],
+    priorityActions: [
+      'Complete your 1-minute Daily Check-In each morning—everything saves right on your device even offline.',
+      'Drink 2–2.5 L of water daily and replenish electrolytes during warm or active field work.',
+      'Use the Emergency & Safety guides if sudden breathing trouble, dizziness, or eye irritation occurs.',
+    ],
+    routines: [
+      {
+        id: 'earth-hydration-check',
+        title: 'Daily Hydration & Fatigue Check',
+        cadence: 'Due Daily Morning',
+        xpReward: 35,
+        targetRegionId: 'abdomen_renal',
+        targetTab: 'daily_checkin',
+        plainLanguageWhy:
+          'Even on Earth, mild dehydration drops your energy and causes headaches before you feel thirsty.',
+        stepByStepHowTo: [
+          'Open Tab 1 (Daily Check-In) and log how many hours you slept and your mood.',
+          'Drink one 500 mL glass of water or electrolyte drink right after submitting.',
+          'Check your pre-written action plan for today.',
+        ],
+        colorZoneHint: 'Green = 7+ hrs sleep & hydrated · Amber = Tired · Red = Dizzy or dehydrated',
+      },
+      {
+        id: 'earth-vitals-check',
+        title: 'Resting Heart & Oxygen Quick Scan',
+        cadence: 'Due Every 48 hrs',
+        xpReward: 40,
+        targetRegionId: 'heart_cardio',
+        targetTab: 'keyboard',
+        plainLanguageWhy:
+          'Checking resting heart rate and blood oxygen confirms your body is adapting well to local air, altitude, and workload.',
+        stepByStepHowTo: [
+          'Sit quietly for 2 minutes and measure blood pressure or finger oxygen if you have a cuff/oximeter.',
+          'Enter your Systolic BP in the Exam Workbench under Tab 2.',
+          'Inspect any yellow or red alerts on the 3D Body Twin.',
+        ],
+        colorZoneHint: 'Green = 95–128 mmHg & SpO2 96–100% · Amber/Red = Rest and hydrate',
       },
     ],
   },

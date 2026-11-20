@@ -18,6 +18,7 @@ import {
   ShieldAlert,
   Play,
   HelpCircle,
+  MapPin,
 } from 'lucide-react';
 
 export interface GamificationProgress {
@@ -125,6 +126,8 @@ export const EnvironmentAndGamificationHub: React.FC<EnvironmentAndGamificationH
         return <Truck className="w-4 h-4" />;
       case 'planetary_base':
         return <Globe className="w-4 h-4" />;
+      case 'earth_remote':
+        return <MapPin className="w-4 h-4" />;
     }
   };
 

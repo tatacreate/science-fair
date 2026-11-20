@@ -1,9 +1,13 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { User } from 'firebase/auth';
 import { DailyCheckin, TelemetryState, CabinEnvironment } from '../types/heliomed';
-import { computeSmartHazardTags } from '../data/nasaFiveHazards';
 import { evaluateSpecificNasaRisks } from '../data/nasaHrpRisks';
 import { SmartRiskPills } from './NasaRiskPillsAndModal';
+import {
+  buildPrewrittenCheckinResponse,
+  PrewrittenAstronautResponse,
+} from '../data/prewrittenResponses';
+import { PrewrittenResponseCard } from './PrewrittenResponseCard';
 import {
   ClipboardCheck,
   Moon,
@@ -15,33 +19,84 @@ import {
   AlertCircle,
   CheckCircle2,
   Send,
-  Radio,
-  FileCheck,
   Compass,
 } from 'lucide-react';
 
-interface DailySelfCheckinModalProps {
-  isOpen: boolean;
-  onClose: () => void;
+interface DailyCheckinFormProps {
   user: User | null;
   onSaveCheckin: (checkin: DailyCheckin) => Promise<void>;
   telemetry: TelemetryState;
   cabin: CabinEnvironment;
   astronautName: string;
+  initialCheckin?: DailyCheckin | null;
   evaMode?: boolean;
   onToggleEvaMode?: (val: boolean) => void;
+  onSubmittedResponse?: (checkin: DailyCheckin, response: PrewrittenAstronautResponse) => void;
+  onOpenBodyTwin?: () => void;
+  onClose?: () => void;
+  isModal?: boolean;
 }
 
-export const DailySelfCheckinModal: React.FC<DailySelfCheckinModalProps> = ({
-  isOpen,
-  onClose,
+const QUICK_FEELINGS = [
+  { label: 'Feeling good & steady', tone: 'emerald' },
+  { label: 'A bit tired / low energy', tone: 'amber' },
+  { label: 'Headache / eye pressure', tone: 'amber' },
+  { label: 'Sore back or stiff muscles', tone: 'amber' },
+  { label: 'Stressed or overwhelmed', tone: 'rose' },
+];
+
+const MENTAL_OPTIONS = [
+  { label: 'Calm & Focused', activeClass: 'bg-emerald-500 border-emerald-300 text-slate-950 font-bold shadow-[0_0_12px_rgba(16,185,129,0.45)]' },
+  { label: 'High Morale', activeClass: 'bg-cyan-500 border-cyan-300 text-slate-950 font-bold shadow-[0_0_12px_rgba(6,182,212,0.45)]' },
+  { label: 'Mild Space Isolation', activeClass: 'bg-amber-400 border-amber-200 text-slate-950 font-bold shadow-[0_0_12px_rgba(245,158,11,0.45)]' },
+  { label: 'Sensory Fatigue', activeClass: 'bg-amber-400 border-amber-200 text-slate-950 font-bold shadow-[0_0_12px_rgba(245,158,11,0.45)]' },
+  { label: 'Anxious / High Stress', activeClass: 'bg-rose-500 border-rose-300 text-white font-bold shadow-[0_0_12px_rgba(244,63,94,0.45)]' },
+  { label: 'Crew Friction / Comm Flag', activeClass: 'bg-orange-500 border-orange-300 text-slate-950 font-bold shadow-[0_0_12px_rgba(249,115,22,0.45)]' },
+  { label: 'System Confusion / Tech Alert', activeClass: 'bg-indigo-500 border-indigo-300 text-white font-bold shadow-[0_0_12px_rgba(99,102,241,0.45)]' },
+];
+
+const STANDARD_PAIN_OPTIONS = [
+  { label: 'Lower Back / Spine', value: 'Spine / Lumbar' },
+  { label: 'Head / Forehead', value: 'Head' },
+  { label: 'Eyes / Vision Blur', value: 'Eyes' },
+  { label: 'Inner Ear / Dizziness', value: 'Inner Ear / Dizziness' },
+  { label: 'Chest / Racing Heart', value: 'Chest / Heart Rate Spike' },
+  { label: 'Joints / Knees', value: 'Joints' },
+  { label: 'Shoulders', value: 'Shoulders' },
+  { label: 'Skin Rash / Fatigue', value: 'Skin Rash / Fatigue' },
+];
+
+const STANDARD_HABITS_IMPROVE = [
+  'Hydration / Drink more water',
+  'Back & body stretching',
+  'Full daily workout (2.5h)',
+  'Regular sleep schedule',
+  '20-20-20 eye rest breaks',
+  'Eat full meals & protein',
+];
+
+const STANDARD_HABITS_STRUGGLING = [
+  'Sleeping in sleeping sack',
+  'Low Hydration / Skipping Water',
+  'Low Nutrition / Appetite Loss',
+  'Crew Friction / Comm Tension',
+  'System Confusion / Tech Alert',
+  'Missing family & home',
+];
+
+export const DailyCheckinInteractiveForm: React.FC<DailyCheckinFormProps> = ({
   user,
   onSaveCheckin,
   telemetry,
   cabin,
   astronautName,
+  initialCheckin,
   evaMode: controlledEvaMode,
   onToggleEvaMode,
+  onSubmittedResponse,
+  onOpenBodyTwin,
+  onClose,
+  isModal = false,
 }) => {
   const [localEvaMode, setLocalEvaMode] = useState<boolean>(false);
   const evaMode = controlledEvaMode !== undefined ? controlledEvaMode : localEvaMode;
@@ -50,41 +105,35 @@ export const DailySelfCheckinModal: React.FC<DailySelfCheckinModalProps> = ({
     onToggleEvaMode?.(val);
   };
 
-  // 1. Sleep on scale of 1 to 10
-  const [sleepQuality, setSleepQuality] = useState<number>(7);
-  const [sleepHours, setSleepHours] = useState<number>(6.5);
-
-  // 2. Mental health
-  const [mentalHealthTag, setMentalHealthTag] = useState<string>('Calm & Focused');
+  const [sleepQuality, setSleepQuality] = useState<number>(initialCheckin?.sleepQuality ?? 7);
+  const [sleepHours, setSleepHours] = useState<number>(initialCheckin?.sleepHours ?? 7);
+  const [mentalHealthTag, setMentalHealthTag] = useState<string>(
+    initialCheckin?.mentalHealth?.split(':')[0]?.trim() || 'Calm & Focused'
+  );
   const [mentalHealthNotes, setMentalHealthNotes] = useState<string>('');
-
-  // 3. How do you feel?
-  const [overallFeeling, setOverallFeeling] = useState<string>('');
-
-  // 4. Pain
-  const [hasPain, setHasPain] = useState<boolean>(false);
-  const [selectedPainAreas, setSelectedPainAreas] = useState<string[]>([]);
-  const [painSeverity, setPainSeverity] = useState<number>(3);
+  const [selectedFeelingPreset, setSelectedFeelingPreset] = useState<string>('Feeling good & steady');
+  const [overallFeelingNote, setOverallFeelingNote] = useState<string>('');
+  const [hasPain, setHasPain] = useState<boolean>(initialCheckin?.hasPain ?? false);
+  const [selectedPainAreas, setSelectedPainAreas] = useState<string[]>(
+    initialCheckin?.painAreas ?? []
+  );
+  const [painSeverity, setPainSeverity] = useState<number>(initialCheckin?.painSeverity || 3);
   const [painNotes, setPainNotes] = useState<string>('');
+  const [habitsToImprove, setHabitsToImprove] = useState<string[]>(
+    initialCheckin?.habitsToImprove?.length
+      ? initialCheckin.habitsToImprove
+      : ['Hydration / Drink more water', 'Back & body stretching']
+  );
+  const [habitsStrugglingWith, setHabitsStrugglingWith] = useState<string[]>(
+    initialCheckin?.habitsStrugglingWith ?? []
+  );
 
-  // 5. Habits to improve
-  const [habitsToImprove, setHabitsToImprove] = useState<string[]>([
-    'Hydration / Electrolyte intake',
-    'Spinal stretching routine',
-  ]);
-  const [customHabitToImprove, setCustomHabitToImprove] = useState('');
-
-  // 6. Habits struggling with
-  const [habitsStrugglingWith, setHabitsStrugglingWith] = useState<string[]>([
-    'Falling asleep in sleeping sack',
-  ]);
-  const [customHabitStruggling, setCustomHabitStruggling] = useState('');
-
-  // Submission & Offline Clinical Guidance state
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [flightGuidance, setFlightGuidance] = useState<string | null>(null);
-
-  if (!isOpen) return null;
+  const [saveError, setSaveError] = useState<string | null>(null);
+  const [submittedResult, setSubmittedResult] = useState<{
+    checkin: DailyCheckin;
+    response: PrewrittenAstronautResponse;
+  } | null>(null);
 
   const togglePainArea = (area: string) => {
     setSelectedPainAreas((prev) =>
@@ -104,174 +153,557 @@ export const DailySelfCheckinModal: React.FC<DailySelfCheckinModalProps> = ({
     );
   };
 
-  // Deterministic 100% Offline NASA-STD-3001 + NASA HRP Risks Generator (No AI, No Internet)
-  const generateOfflineFlightGuidance = (
-    data: DailyCheckin,
-    currentTelemetry: TelemetryState,
-    currentCabin: CabinEnvironment
-  ): string => {
-    const protocols: string[] = [];
-    const smartTags = computeSmartHazardTags({
-      painAreas: data.painAreas,
-      sleepQuality: data.sleepQuality,
-      sleepHours: data.sleepHours,
-      mentalHealth: data.mentalHealth,
-      ambientCO2: currentCabin.ambientCO2,
-      spo2: currentTelemetry.spo2,
-      radiationRate: currentTelemetry.radiationDoseRate,
-    });
-
-    const { activeRisks } = evaluateSpecificNasaRisks({
-      heartRate: currentTelemetry.heartRate,
-      spo2: currentTelemetry.spo2,
-      radiationRate: currentTelemetry.radiationDoseRate,
-      ambientCO2: currentCabin.ambientCO2,
-      ambientPressure: currentCabin.ambientPressure,
-      painAreas: data.painAreas,
-      sleepQuality: data.sleepQuality,
-      sleepHours: data.sleepHours,
-      mentalHealth: data.mentalHealth,
-      overallFeeling: data.overallFeeling,
-      habitsStrugglingWith: data.habitsStrugglingWith,
-      evaMode: data.evaMode,
-    });
-
-    if (activeRisks.length > 0) {
-      protocols.push(
-        `• NASA HRP Specific Risks Flagged: ${activeRisks.map((r) => r.spec.shortBadge).join(' · ')}`
-      );
-      activeRisks.slice(0, 4).forEach((r) => {
-        protocols.push(`  → ${r.spec.title}: ${r.spec.countermeasure}`);
-      });
-    }
-
-    if (smartTags.length > 0) {
-      const tagHeaders = smartTags.map((t) => `[${t.tagLabel}]`).join(' · ');
-      protocols.push(`• NASA 5 Hazards Match: ${tagHeaders}`);
-    }
-
-    // 1. Sleep & Circadian Assessment
-    if (data.sleepQuality < 6 || data.sleepHours < 6) {
-      protocols.push(
-        `• [Isolation & Confinement] Circadian Protocol: Sleep score (${data.sleepQuality}/10, ${data.sleepHours}h) indicates sleep disruption. Start circadian light therapy and check sleep-station airflow.`
-      );
-    } else {
-      protocols.push(
-        `• Sleep & Restorative Status: Sleep index (${data.sleepQuality}/10, ${data.sleepHours}h) meets NASA HRP recovery guidelines.`
-      );
-    }
-
-    // 2. Pain & Musculoskeletal Guidance
-    if (data.hasPain && data.painAreas.length > 0) {
-      const areasStr = data.painAreas.join(', ');
-      let specificCare = 'Perform 15 minutes of gentle floating stretches and resistance loading.';
-      if (data.painAreas.some((a) => /spine|lumbar|leg|joint/i.test(a))) {
-        specificCare =
-          '[Gravity Fields] Perform 15 minutes of knees-to-chest decompression stretches and complete daily resistance exercise.';
-      } else if (data.painAreas.some((a) => /head/i.test(a))) {
-        specificCare = `[Hostile/Closed Environments] Check cabin CO₂ (${currentCabin.ambientCO2} mmHg) and inspect air scrubbers. Drink 350 mL electrolyte water.`;
-      }
-      protocols.push(
-        `• Symptom Guidance (${areasStr} · ${data.painSeverity}/10): ${specificCare}`
-      );
-    } else {
-      protocols.push(`• Musculoskeletal Status: Zero pain reported today.`);
-    }
-
-    // 3. Ground Sync Log
-    protocols.push(
-      `• [Distance from Earth] Offline Log Ready: HR ${currentTelemetry.heartRate} bpm · SpO₂ ${currentTelemetry.spo2}% stored in capsule memory and queued for Flight Surgeons.`
-    );
-
-    return protocols.join('\n\n');
-  };
-
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (isSubmitting) return;
     setIsSubmitting(true);
+    setSaveError(null);
 
-    const checkinData: DailyCheckin = {
-      id: `checkin-${Date.now()}`,
-      userId: user ? user.uid : 'local-astronaut',
-      astronautName: astronautName || 'Astronaut',
-      date: new Date().toISOString().split('T')[0],
-      sleepQuality,
-      sleepHours,
-      mentalHealth: mentalHealthNotes
-        ? `${mentalHealthTag}: ${mentalHealthNotes}`
-        : mentalHealthTag,
-      overallFeeling: overallFeeling || 'Nominal microgravity operational feeling.',
-      hasPain,
-      painAreas: hasPain ? selectedPainAreas : [],
-      painSeverity: hasPain ? painSeverity : 0,
-      painNotes: hasPain ? painNotes : '',
-      habitsToImprove,
-      habitsStrugglingWith,
-      evaMode,
-      createdAt: new Date().toLocaleTimeString(),
-    };
+    try {
+      const feelingSummary =
+        overallFeelingNote.trim() ||
+        selectedFeelingPreset ||
+        (hasPain
+          ? `Experiencing pain (${painSeverity}/10).`
+          : sleepQuality <= 4
+          ? 'Tired after poor sleep.'
+          : 'Feeling good & steady.');
 
-    // Generate offline deterministic flight surgeon guidance instantly (100% offline, zero internet/AI)
-    const guidance = generateOfflineFlightGuidance(checkinData, telemetry, cabin);
-    checkinData.aiFeedback = guidance; // Stored in field for backwards compatibility
-    setFlightGuidance(guidance);
+      const checkinData: DailyCheckin = {
+        id: `checkin-${Date.now()}`,
+        userId: user ? user.uid : 'local-astronaut',
+        astronautName: astronautName || 'Astronaut',
+        date: new Date().toISOString().split('T')[0],
+        sleepQuality,
+        sleepHours,
+        mentalHealth: mentalHealthNotes.trim()
+          ? `${mentalHealthTag}: ${mentalHealthNotes.trim()}`
+          : mentalHealthTag,
+        overallFeeling: feelingSummary,
+        hasPain,
+        painAreas: hasPain ? selectedPainAreas : [],
+        painSeverity: hasPain ? painSeverity : 0,
+        painNotes: hasPain ? painNotes.trim() : '',
+        habitsToImprove,
+        habitsStrugglingWith,
+        evaMode,
+        createdAt: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+      };
 
-    // Save to local storage / Firestore
-    await onSaveCheckin(checkinData);
-    setIsSubmitting(false);
+      const prewritten = buildPrewrittenCheckinResponse(checkinData, telemetry, cabin);
+      checkinData.aiFeedback = prewritten.sections
+        .map((s) => `${s.title} (${s.statusLabel}): ${s.guidanceText} Action: ${s.quickAction}`)
+        .join('\n\n');
+
+      await onSaveCheckin(checkinData);
+      setSubmittedResult({ checkin: checkinData, response: prewritten });
+      onSubmittedResponse?.(checkinData, prewritten);
+    } catch (err) {
+      console.error('Check-in submit issue:', err);
+      setSaveError('Saved locally on this device. Review your guidance below.');
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
-  const standardPainOptions = [
-    { label: 'Lower Back / Spine (Spinal Elongation)', value: 'Spine / Lumbar' },
-    { label: 'Head / Forehead (Fluid shift / CO2)', value: 'Head' },
-    { label: 'Eyes (Vision blur / SANS pressure)', value: 'Eyes' },
-    { label: 'Inner Ear / Dizziness / Balance', value: 'Inner Ear / Dizziness' },
-    { label: 'Chest / Heart Rate Spike', value: 'Chest / Heart Rate Spike' },
-    { label: 'Joints / Knees (Bone & muscle load)', value: 'Joints' },
-    { label: 'Shoulders (Suit / harness strain)', value: 'Shoulders' },
-    { label: 'Skin Rash / Immune Fatigue', value: 'Skin Rash / Fatigue' },
-  ];
+  if (submittedResult) {
+    return (
+      <div className="space-y-4">
+        <div className="p-3.5 rounded-xl bg-emerald-500/20 border border-emerald-400 flex items-center gap-3">
+          <span className="w-3 h-3 rounded-full bg-emerald-400 shadow-[0_0_10px_#34d399] shrink-0" />
+          <div className="text-xs sm:text-sm text-emerald-100 font-semibold">
+            Daily Check-In Submitted! Here are your personalized, easy-to-follow answers based on what you chose:
+          </div>
+        </div>
 
-  const standardHabitsImprove = [
-    'Complete full 2.5h ARED exercise',
-    'Hydration / Electrolyte intake',
-    'Spinal stretching routine',
-    'Consistent sleep sack time',
-    'SANS 20-20-20 eye rest protocol',
-    'High-calorie nutrition target',
-    'Mindfulness / audio journal',
-  ];
+        <PrewrittenResponseCard
+          response={submittedResult.response}
+          astronautName={astronautName}
+          submittedTime={submittedResult.checkin.createdAt}
+          onUpdateAgain={() => setSubmittedResult(null)}
+          onOpenBodyTwin={
+            onOpenBodyTwin
+              ? () => {
+                  onOpenBodyTwin();
+                  onClose?.();
+                }
+              : undefined
+          }
+          onClosePopup={isModal ? onClose : undefined}
+        />
+      </div>
+    );
+  }
 
-  const standardHabitsStruggling = [
-    'Falling asleep in sleeping sack',
-    'Low Hydration / Skipping Water',
-    'Low Nutrition / Appetite Loss',
-    'Crew Friction / Comm Tension',
-    'System Confusion / Tech Alert',
-    'Treadmill bungee harness chafing',
-    'Missing family & sensory cues from Earth',
-  ];
+  const sleepStatus =
+    sleepQuality <= 4 || sleepHours < 6
+      ? { label: 'Low Rest', color: 'bg-rose-500 text-white' }
+      : sleepQuality <= 6 || sleepHours < 7
+      ? { label: 'Fair Rest', color: 'bg-amber-400 text-slate-950' }
+      : { label: 'Well Rested', color: 'bg-emerald-400 text-slate-950' };
+
+  const { activeRisks } = evaluateSpecificNasaRisks({
+    heartRate: telemetry.heartRate,
+    spo2: telemetry.spo2,
+    radiationRate: telemetry.radiationDoseRate,
+    ambientCO2: cabin.ambientCO2,
+    ambientPressure: cabin.ambientPressure,
+    painAreas: hasPain ? selectedPainAreas : [],
+    sleepQuality,
+    sleepHours,
+    mentalHealth: `${mentalHealthTag} ${mentalHealthNotes}`,
+    overallFeeling: `${selectedFeelingPreset} ${overallFeelingNote}`,
+    habitsStrugglingWith,
+    evaMode,
+  });
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-5 bg-slate-950/85 backdrop-blur-sm animate-in fade-in duration-200">
-      <div className="relative w-full max-w-3xl max-h-[92vh] bg-slate-900 border border-slate-700 rounded-2xl shadow-2xl flex flex-col overflow-hidden">
-        {/* Header */}
-        <div className="p-4 sm:p-5 border-b border-slate-800 bg-slate-950 flex items-center justify-between">
+    <form onSubmit={handleSubmit} className="space-y-5">
+      {/* EVA Mode Toggle */}
+      <div className="p-3.5 rounded-2xl bg-slate-800/70 border border-slate-600/80 flex flex-wrap items-center justify-between gap-3">
+        <div className="flex items-center gap-3">
+          <div className="p-2 rounded-xl bg-amber-500/20 border border-amber-400/60">
+            <Compass className="w-5 h-5 text-amber-300" />
+          </div>
+          <div>
+            <span className="text-xs sm:text-sm font-bold text-white block">
+              Spacewalk Today? (Pre / Post-EVA Mode)
+            </span>
+            <span className="text-xs text-slate-300">
+              Turn on before or after a spacewalk for oxygen &amp; joint checks
+            </span>
+          </div>
+        </div>
+        <button
+          type="button"
+          onClick={() => setEvaMode(!evaMode)}
+          className={`px-4 py-2 rounded-xl text-xs font-bold border transition-all cursor-pointer flex items-center gap-2 ${
+            evaMode
+              ? 'bg-amber-400 border-amber-200 text-slate-950 shadow-[0_0_15px_rgba(245,158,11,0.5)]'
+              : 'bg-slate-700 border-slate-500 text-slate-100 hover:bg-slate-600'
+          }`}
+        >
+          <span
+            className={`w-2.5 h-2.5 rounded-full ${
+              evaMode ? 'bg-slate-950' : 'bg-slate-400'
+            }`}
+          />
+          <span>{evaMode ? 'Spacewalk Mode: ON' : 'Spacewalk Mode: OFF'}</span>
+        </button>
+      </div>
+
+      {/* Step 1: Sleep */}
+      <div className="p-4 sm:p-5 rounded-2xl bg-slate-800/65 border border-sky-500/40 space-y-4">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <label className="text-sm font-bold text-white flex items-center gap-2.5">
+            <span className="w-6 h-6 rounded-full bg-sky-500 text-slate-950 text-xs font-extrabold flex items-center justify-center">
+              1
+            </span>
+            <Moon className="w-4 h-4 text-sky-300" />
+            <span>How was your sleep? (1 = Terrible, 10 = Great)</span>
+          </label>
+          <div className="flex items-center gap-2">
+            <span className={`px-2.5 py-1 rounded-lg text-xs font-bold ${sleepStatus.color}`}>
+              {sleepQuality}/10 · {sleepStatus.label}
+            </span>
+          </div>
+        </div>
+
+        {/* Quick 1-10 Score Buttons */}
+        <div className="grid grid-cols-5 sm:grid-cols-10 gap-1.5">
+          {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map((num) => {
+            const isSelected = sleepQuality === num;
+            const activeTone =
+              num <= 4
+                ? 'bg-rose-500 border-rose-300 text-white shadow-[0_0_12px_rgba(244,63,94,0.5)]'
+                : num <= 6
+                ? 'bg-amber-400 border-amber-200 text-slate-950 shadow-[0_0_12px_rgba(245,158,11,0.45)]'
+                : 'bg-emerald-400 border-emerald-200 text-slate-950 shadow-[0_0_12px_rgba(16,185,129,0.45)]';
+            return (
+              <button
+                key={num}
+                type="button"
+                onClick={() => setSleepQuality(num)}
+                className={`py-2 rounded-xl border text-xs font-mono font-bold transition-all cursor-pointer ${
+                  isSelected
+                    ? activeTone
+                    : 'bg-slate-700/80 border-slate-600 text-slate-100 hover:bg-slate-600 hover:border-sky-400'
+                }`}
+              >
+                {num}
+              </button>
+            );
+          })}
+        </div>
+
+        {/* Hours Slept Quick Buttons */}
+        <div className="flex flex-wrap items-center gap-2 pt-2 border-t border-slate-700/70 text-xs">
+          <span className="text-slate-200 font-semibold">Hours slept:</span>
+          {[4.5, 5.5, 6.5, 7.5, 8.5].map((hrs) => {
+            const active = Math.abs(sleepHours - hrs) < 0.25;
+            return (
+              <button
+                key={hrs}
+                type="button"
+                onClick={() => setSleepHours(hrs)}
+                className={`px-3 py-1.5 rounded-lg font-mono font-bold border transition-all cursor-pointer ${
+                  active
+                    ? 'bg-sky-500 border-sky-300 text-slate-950 shadow-[0_0_10px_rgba(56,189,248,0.45)]'
+                    : 'bg-slate-700/80 border-slate-600 text-slate-100 hover:bg-slate-600'
+                }`}
+              >
+                {hrs}h
+              </button>
+            );
+          })}
+          <input
+            type="number"
+            min="1"
+            max="14"
+            step="0.5"
+            value={sleepHours}
+            onChange={(e) => setSleepHours(Number(e.target.value) || 0)}
+            aria-label="Custom sleep hours"
+            className="w-20 px-2.5 py-1.5 bg-slate-900 border border-slate-600 rounded-lg text-white font-mono text-xs focus:outline-none focus:border-sky-400"
+          />
+          <span className="text-slate-300 font-mono">hrs</span>
+        </div>
+      </div>
+
+      {/* Step 2: Mental State */}
+      <div className="p-4 sm:p-5 rounded-2xl bg-slate-800/65 border border-amber-500/40 space-y-3">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <label className="text-sm font-bold text-white flex items-center gap-2.5">
+            <span className="w-6 h-6 rounded-full bg-amber-400 text-slate-950 text-xs font-extrabold flex items-center justify-center">
+              2
+            </span>
+            <Smile className="w-4 h-4 text-amber-300" />
+            <span>How is your mental state &amp; mood today?</span>
+          </label>
+          <span className="px-2.5 py-1 rounded-lg bg-amber-400/20 border border-amber-400/60 text-amber-200 text-xs font-bold">
+            Selected: {mentalHealthTag}
+          </span>
+        </div>
+
+        <div className="flex flex-wrap gap-2">
+          {MENTAL_OPTIONS.map((mood) => {
+            const isSelected = mentalHealthTag === mood.label;
+            return (
+              <button
+                key={mood.label}
+                type="button"
+                onClick={() => setMentalHealthTag(mood.label)}
+                className={`px-3.5 py-2 rounded-xl text-xs border transition-all cursor-pointer flex items-center gap-1.5 ${
+                  isSelected
+                    ? mood.activeClass
+                    : 'bg-slate-700/80 border-slate-600 text-slate-100 hover:bg-slate-600 hover:border-amber-300'
+                }`}
+              >
+                {isSelected && <CheckCircle2 className="w-3.5 h-3.5 shrink-0" />}
+                <span>{mood.label}</span>
+              </button>
+            );
+          })}
+        </div>
+
+        <input
+          type="text"
+          value={mentalHealthNotes}
+          onChange={(e) => setMentalHealthNotes(e.target.value)}
+          placeholder="Optional note: anything on your mind? (not required)"
+          className="w-full px-3.5 py-2 bg-slate-900 border border-slate-600 rounded-xl text-xs text-white placeholder-slate-400 focus:outline-none focus:border-amber-400"
+        />
+      </div>
+
+      {/* Step 3: How do you feel overall? */}
+      <div className="p-4 sm:p-5 rounded-2xl bg-slate-800/65 border border-emerald-500/40 space-y-3">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <label className="text-sm font-bold text-white flex items-center gap-2.5">
+            <span className="w-6 h-6 rounded-full bg-emerald-400 text-slate-950 text-xs font-extrabold flex items-center justify-center">
+              3
+            </span>
+            <Activity className="w-4 h-4 text-emerald-300" />
+            <span>How is your overall body energy today?</span>
+          </label>
+          <span className="text-xs text-emerald-300 font-semibold">Pick one or type below</span>
+        </div>
+
+        <div className="flex flex-wrap gap-2">
+          {QUICK_FEELINGS.map((item) => {
+            const isSelected = selectedFeelingPreset === item.label;
+            const activeClass =
+              item.tone === 'emerald'
+                ? 'bg-emerald-500 border-emerald-300 text-slate-950 font-bold shadow-[0_0_12px_rgba(16,185,129,0.45)]'
+                : item.tone === 'rose'
+                ? 'bg-rose-500 border-rose-300 text-white font-bold shadow-[0_0_12px_rgba(244,63,94,0.45)]'
+                : 'bg-amber-400 border-amber-200 text-slate-950 font-bold shadow-[0_0_12px_rgba(245,158,11,0.45)]';
+            return (
+              <button
+                key={item.label}
+                type="button"
+                onClick={() => setSelectedFeelingPreset(item.label)}
+                className={`px-3.5 py-2 rounded-xl text-xs border transition-all cursor-pointer flex items-center gap-1.5 ${
+                  isSelected
+                    ? activeClass
+                    : 'bg-slate-700/80 border-slate-600 text-slate-100 hover:bg-slate-600 hover:border-emerald-300'
+                }`}
+              >
+                {isSelected && <CheckCircle2 className="w-3.5 h-3.5 shrink-0" />}
+                <span>{item.label}</span>
+              </button>
+            );
+          })}
+        </div>
+
+        <input
+          type="text"
+          value={overallFeelingNote}
+          onChange={(e) => setOverallFeelingNote(e.target.value)}
+          placeholder="Optional details (e.g., dizzy when turning head, tired after workout)..."
+          className="w-full px-3.5 py-2 bg-slate-900 border border-slate-600 rounded-xl text-xs text-white placeholder-slate-400 focus:outline-none focus:border-emerald-400"
+        />
+      </div>
+
+      {/* Step 4: Any Pain? */}
+      <div className="p-4 sm:p-5 rounded-2xl bg-slate-800/65 border border-rose-500/40 space-y-3">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <label className="text-sm font-bold text-white flex items-center gap-2.5">
+            <span className="w-6 h-6 rounded-full bg-rose-500 text-white text-xs font-extrabold flex items-center justify-center">
+              4
+            </span>
+            <HeartPulse className="w-4 h-4 text-rose-300" />
+            <span>Are you feeling any pain or discomfort?</span>
+          </label>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => {
+                setHasPain(false);
+                setSelectedPainAreas([]);
+              }}
+              className={`px-4 py-2 rounded-xl text-xs font-bold border transition-all cursor-pointer ${
+                !hasPain
+                  ? 'bg-emerald-500 border-emerald-300 text-slate-950 shadow-[0_0_14px_rgba(16,185,129,0.5)]'
+                  : 'bg-slate-700 border-slate-600 text-slate-200 hover:bg-slate-600'
+              }`}
+            >
+              No Pain
+            </button>
+            <button
+              type="button"
+              onClick={() => setHasPain(true)}
+              className={`px-4 py-2 rounded-xl text-xs font-bold border transition-all cursor-pointer ${
+                hasPain
+                  ? 'bg-rose-500 border-rose-300 text-white shadow-[0_0_14px_rgba(244,63,94,0.55)]'
+                  : 'bg-slate-700 border-slate-600 text-slate-200 hover:bg-slate-600'
+              }`}
+            >
+              Yes, I Have Pain
+            </button>
+          </div>
+        </div>
+
+        {hasPain && (
+          <div className="pt-3 border-t border-slate-700/80 space-y-3">
+            <span className="text-xs font-semibold text-rose-200 block">
+              Tap where it hurts (you can pick more than one):
+            </span>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+              {STANDARD_PAIN_OPTIONS.map((opt) => {
+                const isSelected = selectedPainAreas.includes(opt.value);
+                return (
+                  <button
+                    key={opt.value}
+                    type="button"
+                    onClick={() => togglePainArea(opt.value)}
+                    className={`px-3 py-2.5 rounded-xl border text-left text-xs transition-all cursor-pointer flex items-center justify-between ${
+                      isSelected
+                        ? 'bg-rose-600 border-rose-300 text-white font-bold shadow-[0_0_12px_rgba(244,63,94,0.4)]'
+                        : 'bg-slate-700/80 border-slate-600 text-slate-100 hover:bg-slate-600'
+                    }`}
+                  >
+                    <span>{opt.label}</span>
+                    {isSelected && <CheckCircle2 className="w-4 h-4 text-white shrink-0" />}
+                  </button>
+                );
+              })}
+            </div>
+
+            <div className="flex items-center justify-between pt-2">
+              <span className="text-xs text-slate-200 font-semibold">Pain level (1 = Mild, 10 = Strong):</span>
+              <span className="px-2.5 py-0.5 rounded-lg bg-rose-500 text-white text-xs font-mono font-bold">
+                {painSeverity} / 10
+              </span>
+            </div>
+            <input
+              type="range"
+              min="1"
+              max="10"
+              value={painSeverity}
+              onChange={(e) => setPainSeverity(Number(e.target.value))}
+              className="w-full accent-rose-500 cursor-pointer"
+            />
+
+            <input
+              type="text"
+              value={painNotes}
+              onChange={(e) => setPainNotes(e.target.value)}
+              placeholder="Optional note about the pain (e.g., started after workout)..."
+              className="w-full px-3.5 py-2 bg-slate-900 border border-slate-600 rounded-xl text-xs text-white placeholder-slate-400 focus:outline-none focus:border-rose-400"
+            />
+          </div>
+        )}
+      </div>
+
+      {/* Step 5: Habits */}
+      <div className="p-4 sm:p-5 rounded-2xl bg-slate-800/65 border border-indigo-500/40 space-y-4">
+        <div className="space-y-2.5">
+          <label className="text-sm font-bold text-white flex items-center gap-2.5">
+            <span className="w-6 h-6 rounded-full bg-indigo-400 text-slate-950 text-xs font-extrabold flex items-center justify-center">
+              5
+            </span>
+            <Target className="w-4 h-4 text-cyan-300" />
+            <span>Habits to focus on today</span>
+          </label>
+          <div className="flex flex-wrap gap-2">
+            {STANDARD_HABITS_IMPROVE.map((habit) => {
+              const isSelected = habitsToImprove.includes(habit);
+              return (
+                <button
+                  key={habit}
+                  type="button"
+                  onClick={() => toggleHabitToImprove(habit)}
+                  className={`px-3 py-2 rounded-xl text-xs border transition-all cursor-pointer flex items-center gap-1.5 ${
+                    isSelected
+                      ? 'bg-cyan-500 border-cyan-300 text-slate-950 font-bold shadow-[0_0_12px_rgba(6,182,212,0.4)]'
+                      : 'bg-slate-700/80 border-slate-600 text-slate-100 hover:bg-slate-600'
+                  }`}
+                >
+                  {isSelected && <CheckCircle2 className="w-3.5 h-3.5 shrink-0" />}
+                  <span>{habit}</span>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+
+        <div className="space-y-2.5 pt-3 border-t border-slate-700/80">
+          <label className="text-xs font-bold text-purple-200 flex items-center gap-2">
+            <AlertCircle className="w-4 h-4 text-purple-300" />
+            <span>Anything you are struggling with today? (Optional)</span>
+          </label>
+          <div className="flex flex-wrap gap-2">
+            {STANDARD_HABITS_STRUGGLING.map((habit) => {
+              const isSelected = habitsStrugglingWith.includes(habit);
+              return (
+                <button
+                  key={habit}
+                  type="button"
+                  onClick={() => toggleHabitStruggling(habit)}
+                  className={`px-3 py-2 rounded-xl text-xs border transition-all cursor-pointer flex items-center gap-1.5 ${
+                    isSelected
+                      ? 'bg-purple-500 border-purple-300 text-white font-bold shadow-[0_0_12px_rgba(168,85,247,0.45)]'
+                      : 'bg-slate-700/80 border-slate-600 text-slate-100 hover:bg-slate-600'
+                  }`}
+                >
+                  {isSelected && <CheckCircle2 className="w-3.5 h-3.5 shrink-0" />}
+                  <span>{habit}</span>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      </div>
+
+      {/* Live NASA Risk Pills preview if any triggered */}
+      {activeRisks.length > 0 && (
+        <div className="p-3.5 rounded-2xl bg-slate-800/80 border border-cyan-500/50">
+          <SmartRiskPills
+            compact
+            title="Live NASA Health Flags Detected"
+            risks={activeRisks}
+          />
+        </div>
+      )}
+
+      {saveError && (
+        <div className="p-3 rounded-xl bg-amber-500/20 border border-amber-400 text-xs text-amber-100">
+          {saveError}
+        </div>
+      )}
+
+      {/* Bright, Unmistakable Submit Bar */}
+      <div className="flex flex-wrap items-center justify-between gap-3 pt-2">
+        <div className="flex items-center gap-2 text-xs text-emerald-300 font-medium">
+          <span className="w-2.5 h-2.5 rounded-full bg-emerald-400 shadow-[0_0_8px_#34d399]" />
+          <span>Works 100% offline · Instant advice after submit</span>
+        </div>
+
+        <button
+          type="submit"
+          disabled={isSubmitting}
+          className="px-6 py-3 rounded-xl bg-gradient-to-r from-cyan-400 via-sky-400 to-emerald-400 hover:from-cyan-300 hover:to-emerald-300 text-slate-950 text-sm font-extrabold flex items-center gap-2 transition-all cursor-pointer shadow-[0_0_22px_rgba(6,182,212,0.5)] disabled:opacity-60"
+        >
+          <Send className="w-4 h-4" />
+          <span>{isSubmitting ? 'Saving Check-In...' : 'Submit Daily Check-In'}</span>
+        </button>
+      </div>
+    </form>
+  );
+};
+
+interface DailySelfCheckinModalProps {
+  isOpen: boolean;
+  onClose: () => void;
+  user: User | null;
+  onSaveCheckin: (checkin: DailyCheckin) => Promise<void>;
+  telemetry: TelemetryState;
+  cabin: CabinEnvironment;
+  astronautName: string;
+  initialCheckin?: DailyCheckin | null;
+  evaMode?: boolean;
+  onToggleEvaMode?: (val: boolean) => void;
+  onOpenBodyTwin?: () => void;
+}
+
+export const DailySelfCheckinModal: React.FC<DailySelfCheckinModalProps> = ({
+  isOpen,
+  onClose,
+  user,
+  onSaveCheckin,
+  telemetry,
+  cabin,
+  astronautName,
+  initialCheckin,
+  evaMode,
+  onToggleEvaMode,
+  onOpenBodyTwin,
+}) => {
+  const [formKey, setFormKey] = useState(0);
+
+  useEffect(() => {
+    if (isOpen) {
+      setFormKey((k) => k + 1);
+    }
+  }, [isOpen]);
+
+  if (!isOpen) return null;
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-5 bg-slate-950/85 backdrop-blur-sm">
+      <div className="relative w-full max-w-3xl max-h-[92vh] bg-slate-900 border-2 border-cyan-500/70 rounded-2xl shadow-[0_0_40px_rgba(6,182,212,0.25)] flex flex-col overflow-hidden">
+        {/* Pop-up Header */}
+        <div className="p-4 sm:p-5 border-b border-slate-700 bg-gradient-to-r from-slate-900 via-cyan-950/60 to-slate-900 flex items-center justify-between gap-3">
           <div className="flex items-center gap-3">
-            <div className="p-2.5 rounded-xl bg-cyan-950 border border-cyan-700/60 text-cyan-400">
-              <ClipboardCheck className="w-5 h-5 text-cyan-400" />
+            <div className="p-2.5 rounded-xl bg-cyan-500 text-slate-950 shadow-[0_0_15px_rgba(6,182,212,0.5)]">
+              <ClipboardCheck className="w-5 h-5" />
             </div>
             <div>
-              <div className="flex items-center gap-2">
-                <h3 className="text-base font-bold text-slate-100">
-                  Daily Astronaut Medical Self-Check
-                </h3>
-                <span className="px-2 py-0.5 rounded bg-cyan-950 border border-cyan-700 text-[10px] font-mono text-cyan-300 font-bold">
-                  OFFLINE CAPSULE MODE
-                </span>
-              </div>
-              <p className="text-xs text-slate-400">
-                Operates 100% on board with no internet or cloud connectivity. NASA flight protocols are applied locally.
+              <h3 className="text-base sm:text-lg font-bold text-white">
+                Daily Astronaut Check-In
+              </h3>
+              <p className="text-xs text-cyan-200">
+                Answer 5 quick questions about sleep, mood &amp; body to get your plan for today
               </p>
             </div>
           </div>
@@ -279,404 +711,29 @@ export const DailySelfCheckinModal: React.FC<DailySelfCheckinModalProps> = ({
           <button
             type="button"
             onClick={onClose}
-            className="p-1.5 rounded-lg hover:bg-slate-800 text-slate-400 hover:text-white transition-colors cursor-pointer"
+            className="p-2 rounded-xl bg-slate-800 hover:bg-rose-600 text-slate-200 hover:text-white border border-slate-600 transition-colors cursor-pointer"
+            aria-label="Close Daily Check-In Pop-up"
           >
             <X className="w-5 h-5" />
           </button>
         </div>
 
-        {/* Content */}
-        <div className="p-5 sm:p-6 overflow-y-auto space-y-6 text-slate-200">
-          {flightGuidance ? (
-            /* Post-Submission Offline Guidance Feedback */
-            <div className="space-y-4">
-              <div className="p-4 rounded-xl bg-emerald-950/60 border border-emerald-800 flex items-start gap-3">
-                <CheckCircle2 className="w-6 h-6 text-emerald-400 flex-shrink-0 mt-0.5" />
-                <div>
-                  <h4 className="text-sm font-bold text-emerald-200">
-                    Daily Self-Check Recorded Locally
-                  </h4>
-                  <p className="text-xs text-emerald-300/90 mt-0.5">
-                    Your check-in has been logged in spacecraft non-volatile memory. An encrypted packet is queued for NASA flight surgeons on Earth.
-                  </p>
-                </div>
-              </div>
-
-              <div className="p-4 rounded-xl bg-slate-950 border border-slate-800 space-y-3">
-                <div className="flex items-center gap-2 text-cyan-400 text-xs font-mono font-bold uppercase tracking-wider">
-                  <FileCheck className="w-4 h-4 text-cyan-400" />
-                  Onboard Flight Surgeon Guidance (NASA-STD-3001 Protocol):
-                </div>
-                <div className="text-xs sm:text-sm text-slate-200 leading-relaxed whitespace-pre-wrap font-sans bg-slate-900/60 p-4 rounded-lg border border-slate-800/80">
-                  {flightGuidance}
-                </div>
-              </div>
-
-              <div className="flex justify-end gap-2 pt-2">
-                <button
-                  type="button"
-                  onClick={() => {
-                    setFlightGuidance(null);
-                    onClose();
-                  }}
-                  className="px-5 py-2 rounded-xl bg-cyan-600 hover:bg-cyan-500 text-white text-xs font-bold font-mono transition-colors cursor-pointer"
-                >
-                  Return to Dashboard
-                </button>
-              </div>
-            </div>
-          ) : (
-            /* Interactive Self-Check Form */
-            <form onSubmit={handleSubmit} className="space-y-6">
-              {/* Pre/Post-EVA Spacewalk Readiness Mode Toggle */}
-              <div className="p-3.5 rounded-xl bg-slate-950 border border-slate-800 flex flex-wrap items-center justify-between gap-3">
-                <div className="flex items-center gap-2.5 text-xs">
-                  <Compass className="w-4 h-4 text-amber-400 shrink-0" />
-                  <div>
-                    <span className="font-bold text-slate-100 block">
-                      Pre/Post-EVA (Spacewalk) Readiness Check
-                    </span>
-                    <span className="text-[11px] text-slate-400">
-                      Monitors Decompression Sickness (&quot;The Bends&quot;) &amp; Spacewalk Cognitive Fatigue
-                    </span>
-                  </div>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => setEvaMode(!evaMode)}
-                  className={`px-3.5 py-1.5 rounded-lg text-xs font-mono font-bold border transition cursor-pointer ${
-                    evaMode
-                      ? 'bg-amber-950 border-amber-500 text-amber-200'
-                      : 'bg-slate-900 border-slate-700 text-slate-300 hover:border-slate-500'
-                  }`}
-                >
-                  {evaMode ? 'EVA MODE: ACTIVE' : 'ENABLE EVA MODE'}
-                </button>
-              </div>
-
-              {/* Question 1: Sleep */}
-              <div className="p-4 rounded-xl bg-slate-950 border border-slate-800 space-y-3">
-                <div className="flex items-center justify-between">
-                  <label className="text-xs sm:text-sm font-semibold text-slate-100 flex items-center gap-2">
-                    <Moon className="w-4 h-4 text-cyan-400" />
-                    1. How was your sleep on a scale of 1 to 10?
-                  </label>
-                  <span className="text-sm font-mono font-bold text-cyan-400">
-                    {sleepQuality} / 10
-                  </span>
-                </div>
-
-                <input
-                  type="range"
-                  min="1"
-                  max="10"
-                  step="1"
-                  value={sleepQuality}
-                  onChange={(e) => setSleepQuality(Number(e.target.value))}
-                  className="w-full accent-cyan-500 cursor-pointer"
-                />
-
-                <div className="flex justify-between text-[11px] font-mono text-slate-400">
-                  <span>1: Disrupted / Microgravity insomnia</span>
-                  <span>5: Moderate</span>
-                  <span>10: Deep restful sleep</span>
-                </div>
-
-                <div className="flex items-center gap-2 pt-2 border-t border-slate-800/80 text-xs">
-                  <span className="text-slate-400">Estimated Sleep Duration:</span>
-                  <input
-                    type="number"
-                    min="1"
-                    max="14"
-                    step="0.5"
-                    value={sleepHours}
-                    onChange={(e) => setSleepHours(Number(e.target.value))}
-                    className="w-20 px-2 py-1 bg-slate-900 border border-slate-700 rounded-md text-slate-100 font-mono text-xs focus:outline-none focus:border-cyan-500"
-                  />
-                  <span className="text-slate-400 font-mono">hours</span>
-                </div>
-              </div>
-
-              {/* Question 2: Mental Health */}
-              <div className="p-4 rounded-xl bg-slate-950 border border-slate-800 space-y-3">
-                <label className="text-xs sm:text-sm font-semibold text-slate-100 flex items-center gap-2">
-                  <Smile className="w-4 h-4 text-amber-400" />
-                  2. How is your mental health?
-                </label>
-
-                <div className="flex flex-wrap gap-2">
-                  {[
-                    'Calm & Focused',
-                    'High Morale',
-                    'Mild Space Isolation',
-                    'Sensory Fatigue',
-                    'Anxious / High Stress',
-                    'Crew Friction / Comm Flag',
-                    'System Confusion / Tech Alert',
-                  ].map((mood) => (
-                    <button
-                      key={mood}
-                      type="button"
-                      onClick={() => setMentalHealthTag(mood)}
-                      className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors cursor-pointer border ${
-                        mentalHealthTag === mood
-                          ? 'bg-amber-950 border-amber-600 text-amber-200'
-                          : 'bg-slate-900 border-slate-800 text-slate-400 hover:text-slate-200'
-                      }`}
-                    >
-                      {mood}
-                    </button>
-                  ))}
-                </div>
-
-                <textarea
-                  value={mentalHealthNotes}
-                  onChange={(e) => setMentalHealthNotes(e.target.value)}
-                  placeholder="Share any thoughts on confinement, mood, thoughts about home, or cognitive clarity..."
-                  rows={2}
-                  className="w-full px-3 py-2 bg-slate-900 border border-slate-800 rounded-lg text-xs text-slate-100 placeholder-slate-500 focus:outline-none focus:border-amber-500 resize-none font-sans"
-                />
-              </div>
-
-              {/* Question 3: Overall Feeling */}
-              <div className="p-4 rounded-xl bg-slate-950 border border-slate-800 space-y-3">
-                <label className="text-xs sm:text-sm font-semibold text-slate-100 flex items-center gap-2">
-                  <Activity className="w-4 h-4 text-emerald-400" />
-                  3. How do you feel?
-                </label>
-                <textarea
-                  value={overallFeeling}
-                  onChange={(e) => setOverallFeeling(e.target.value)}
-                  placeholder="Describe your general physical energy, nausea/motion sickness, appetite, breathing, or alertness today..."
-                  rows={2}
-                  required
-                  className="w-full px-3 py-2 bg-slate-900 border border-slate-800 rounded-lg text-xs text-slate-100 placeholder-slate-500 focus:outline-none focus:border-emerald-500 resize-none font-sans"
-                />
-              </div>
-
-              {/* Question 4: Pain Assessment */}
-              <div className="p-4 rounded-xl bg-slate-950 border border-slate-800 space-y-3">
-                <div className="flex items-center justify-between">
-                  <label className="text-xs sm:text-sm font-semibold text-slate-100 flex items-center gap-2">
-                    <HeartPulse className="w-4 h-4 text-rose-400" />
-                    4. Are you having any pain?
-                  </label>
-                  <div className="flex items-center gap-2">
-                    <button
-                      type="button"
-                      onClick={() => setHasPain(false)}
-                      className={`px-3 py-1 rounded-lg text-xs font-mono font-semibold transition-colors cursor-pointer ${
-                        !hasPain ? 'bg-emerald-700 text-white' : 'bg-slate-800 text-slate-400'
-                      }`}
-                    >
-                      NO PAIN
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setHasPain(true)}
-                      className={`px-3 py-1 rounded-lg text-xs font-mono font-semibold transition-colors cursor-pointer ${
-                        hasPain ? 'bg-rose-700 text-white' : 'bg-slate-800 text-slate-400'
-                      }`}
-                    >
-                      YES, PAIN
-                    </button>
-                  </div>
-                </div>
-
-                {hasPain && (
-                  <div className="pt-3 border-t border-slate-800 space-y-3">
-                    <span className="text-xs font-medium text-slate-300 block">
-                      Select affected anatomical areas:
-                    </span>
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                      {standardPainOptions.map((opt) => {
-                        const isSelected = selectedPainAreas.includes(opt.value);
-                        return (
-                          <button
-                            key={opt.value}
-                            type="button"
-                            onClick={() => togglePainArea(opt.value)}
-                            className={`p-2.5 rounded-lg border text-left text-xs transition-colors cursor-pointer flex items-center justify-between ${
-                              isSelected
-                                ? 'bg-rose-950/80 border-rose-600 text-rose-200'
-                                : 'bg-slate-900 border-slate-800 text-slate-400 hover:text-slate-200'
-                            }`}
-                          >
-                            <span>{opt.label}</span>
-                            {isSelected && <CheckCircle2 className="w-3.5 h-3.5 text-rose-400" />}
-                          </button>
-                        );
-                      })}
-                    </div>
-
-                    <div className="flex items-center justify-between pt-2">
-                      <span className="text-xs text-slate-400">Pain Severity (0-10):</span>
-                      <span className="text-xs font-mono font-bold text-rose-400">{painSeverity} / 10</span>
-                    </div>
-                    <input
-                      type="range"
-                      min="1"
-                      max="10"
-                      value={painSeverity}
-                      onChange={(e) => setPainSeverity(Number(e.target.value))}
-                      className="w-full accent-rose-500 cursor-pointer"
-                    />
-
-                    <input
-                      type="text"
-                      value={painNotes}
-                      onChange={(e) => setPainNotes(e.target.value)}
-                      placeholder="Describe the pain: constant ache, throbbing with heartbeat, worse after exercise, etc."
-                      className="w-full px-3 py-1.5 bg-slate-900 border border-slate-800 rounded-lg text-xs text-slate-100 placeholder-slate-500 focus:outline-none focus:border-rose-500"
-                    />
-                  </div>
-                )}
-              </div>
-
-              {/* Question 5: What habits would you like to improve? */}
-              <div className="p-4 rounded-xl bg-slate-950 border border-slate-800 space-y-3">
-                <label className="text-xs sm:text-sm font-semibold text-slate-100 flex items-center gap-2">
-                  <Target className="w-4 h-4 text-cyan-400" />
-                  5. What habits would you like to improve?
-                </label>
-                <div className="flex flex-wrap gap-2">
-                  {standardHabitsImprove.map((habit) => {
-                    const isSelected = habitsToImprove.includes(habit);
-                    return (
-                      <button
-                        key={habit}
-                        type="button"
-                        onClick={() => toggleHabitToImprove(habit)}
-                        className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors cursor-pointer border ${
-                          isSelected
-                            ? 'bg-cyan-950 border-cyan-600 text-cyan-200'
-                            : 'bg-slate-900 border-slate-800 text-slate-400 hover:text-slate-200'
-                        }`}
-                      >
-                        {habit}
-                      </button>
-                    );
-                  })}
-                </div>
-
-                <div className="flex gap-2 pt-1">
-                  <input
-                    type="text"
-                    value={customHabitToImprove}
-                    onChange={(e) => setCustomHabitToImprove(e.target.value)}
-                    placeholder="Add custom habit to improve..."
-                    className="flex-1 px-3 py-1.5 bg-slate-900 border border-slate-800 rounded-lg text-xs text-slate-100 placeholder-slate-500 focus:outline-none focus:border-cyan-500"
-                  />
-                  <button
-                    type="button"
-                    onClick={() => {
-                      if (customHabitToImprove.trim()) {
-                        setHabitsToImprove((prev) => [...prev, customHabitToImprove.trim()]);
-                        setCustomHabitToImprove('');
-                      }
-                    }}
-                    className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-xs rounded-lg text-slate-200 cursor-pointer"
-                  >
-                    Add
-                  </button>
-                </div>
-              </div>
-
-              {/* Question 6: Habits you're struggling with */}
-              <div className="p-4 rounded-xl bg-slate-950 border border-slate-800 space-y-3">
-                <label className="text-xs sm:text-sm font-semibold text-slate-100 flex items-center gap-2">
-                  <AlertCircle className="w-4 h-4 text-purple-400" />
-                  6. Habits you&apos;re struggling with
-                </label>
-                <div className="flex flex-wrap gap-2">
-                  {standardHabitsStruggling.map((habit) => {
-                    const isSelected = habitsStrugglingWith.includes(habit);
-                    return (
-                      <button
-                        key={habit}
-                        type="button"
-                        onClick={() => toggleHabitStruggling(habit)}
-                        className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors cursor-pointer border ${
-                          isSelected
-                            ? 'bg-purple-950 border-purple-600 text-purple-200'
-                            : 'bg-slate-900 border-slate-800 text-slate-400 hover:text-slate-200'
-                        }`}
-                      >
-                        {habit}
-                      </button>
-                    );
-                  })}
-                </div>
-
-                <div className="flex gap-2 pt-1">
-                  <input
-                    type="text"
-                    value={customHabitStruggling}
-                    onChange={(e) => setCustomHabitStruggling(e.target.value)}
-                    placeholder="Add custom habit you are struggling with..."
-                    className="flex-1 px-3 py-1.5 bg-slate-900 border border-slate-800 rounded-lg text-xs text-slate-100 placeholder-slate-500 focus:outline-none focus:border-purple-500"
-                  />
-                  <button
-                    type="button"
-                    onClick={() => {
-                      if (customHabitStruggling.trim()) {
-                        setHabitsStrugglingWith((prev) => [...prev, customHabitStruggling.trim()]);
-                        setCustomHabitStruggling('');
-                      }
-                    }}
-                    className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-xs rounded-lg text-slate-200 cursor-pointer"
-                  >
-                    Add
-                  </button>
-                </div>
-              </div>
-
-              {/* Live Smart NASA HRP Specific Risks Preview */}
-              {(() => {
-                const { activeRisks } = evaluateSpecificNasaRisks({
-                  heartRate: telemetry.heartRate,
-                  spo2: telemetry.spo2,
-                  radiationRate: telemetry.radiationDoseRate,
-                  ambientCO2: cabin.ambientCO2,
-                  ambientPressure: cabin.ambientPressure,
-                  painAreas: hasPain ? selectedPainAreas : [],
-                  sleepQuality,
-                  sleepHours,
-                  mentalHealth: `${mentalHealthTag} ${mentalHealthNotes}`,
-                  overallFeeling,
-                  habitsStrugglingWith,
-                  evaMode,
-                });
-                if (activeRisks.length === 0) return null;
-                return (
-                  <div className="p-3.5 rounded-xl bg-slate-950 border border-cyan-800/60">
-                    <SmartRiskPills
-                      compact
-                      title="Live NASA HRP Risks Flagged From This Check-In"
-                      risks={activeRisks}
-                    />
-                  </div>
-                );
-              })()}
-
-              {/* Submit Button */}
-              <div className="flex items-center justify-between pt-2 border-t border-slate-800">
-                <div className="flex items-center gap-2 text-xs font-mono text-slate-400">
-                  <Radio className="w-3.5 h-3.5 text-amber-400" />
-                  <span>LOCAL LOG · OFFLINE SAFE</span>
-                </div>
-
-                <button
-                  type="submit"
-                  disabled={isSubmitting || !overallFeeling.trim()}
-                  className="px-6 py-2.5 rounded-xl bg-cyan-600 hover:bg-cyan-500 text-white text-xs font-bold font-mono flex items-center gap-2 transition-colors cursor-pointer disabled:opacity-50"
-                >
-                  <Send className="w-4 h-4" />
-                  <span>{isSubmitting ? 'Recording In Memory...' : 'Submit Daily Self-Check'}</span>
-                </button>
-              </div>
-            </form>
-          )}
+        {/* Scrollable Content */}
+        <div className="p-4 sm:p-6 overflow-y-auto text-slate-100">
+          <DailyCheckinInteractiveForm
+            key={formKey}
+            user={user}
+            onSaveCheckin={onSaveCheckin}
+            telemetry={telemetry}
+            cabin={cabin}
+            astronautName={astronautName}
+            initialCheckin={initialCheckin}
+            evaMode={evaMode}
+            onToggleEvaMode={onToggleEvaMode}
+            onOpenBodyTwin={onOpenBodyTwin}
+            onClose={onClose}
+            isModal
+          />
         </div>
       </div>
     </div>

@@ -99,13 +99,21 @@ export function evaluateNasaFiveHazards(input: HazardEvalInput): NasaHazardStatu
   // 3. Distance from Earth
   const isEarthOrbit = missionCode === 'ISS-EXP72' || missionCode === 'CREW-9';
   const delayDisplay =
-    activeEnvId === 'space_station' && isEarthOrbit
+    activeEnvId === 'earth_remote'
+      ? 'Earth · 0s Local Mode'
+      : activeEnvId === 'space_station' && isEarthOrbit
       ? '0.5s LEO Link'
       : activeEnvId === 'planetary_base' && missionCode.includes('ARTEMIS')
       ? '1.3s Lunar Link'
       : `${formatDelayClock(marsTransitDelaySeconds)} Delay`;
-  let distStatus: HazardColorStatus = isEarthOrbit ? 'GREEN' : 'AMBER';
-  let distLabel = isEarthOrbit ? 'Near Earth' : 'Offline Mode Active';
+  let distStatus: HazardColorStatus =
+    activeEnvId === 'earth_remote' || isEarthOrbit ? 'GREEN' : 'AMBER';
+  let distLabel =
+    activeEnvId === 'earth_remote'
+      ? 'On Earth (Offline Ready)'
+      : isEarthOrbit
+      ? 'Near Earth'
+      : 'Offline Mode Active';
   if (radStatus === 'RED' || activeScenarioId === 'scenario-decompression' || activeScenarioId === 'osdr-630-test') {
     distStatus = 'RED';
     distLabel = 'Offline SOS';

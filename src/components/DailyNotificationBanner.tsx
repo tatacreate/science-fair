@@ -1,129 +1,104 @@
 import React from 'react';
-import { Bell, ShieldCheck, CheckCircle2, ArrowRight, Clock, HelpCircle } from 'lucide-react';
+import { ClipboardCheck, Sparkles, ArrowRight, Eye } from 'lucide-react';
 import { DailyCheckin } from '../types/heliomed';
-import { RoutinePromptSpec } from '../data/habitatEnvironments';
 
 interface DailyNotificationBannerProps {
   onOpenCheckin: () => void;
+  onGoToCheckinTab?: () => void;
   latestCheckin: DailyCheckin | null;
   hasSubmittedToday: boolean;
-  dueRoutine?: RoutinePromptSpec | null;
-  onStartDueRoutine?: (routine: RoutinePromptSpec) => void;
 }
 
 export const DailyNotificationBanner: React.FC<DailyNotificationBannerProps> = ({
   onOpenCheckin,
+  onGoToCheckinTab,
   latestCheckin,
   hasSubmittedToday,
-  dueRoutine,
-  onStartDueRoutine,
 }) => {
+  const moodShort = latestCheckin?.mentalHealth?.split(':')[0] || 'Calm & Focused';
+
   return (
-    <div className="space-y-3">
-      {/* Daily Medical Self-Check Banner */}
-      <div
-        className={`rounded-2xl p-4 sm:p-5 border transition-all ${
-          hasSubmittedToday
-            ? 'bg-slate-900/80 border-slate-800'
-            : 'bg-gradient-to-r from-cyan-950/80 via-slate-900 to-indigo-950/80 border-cyan-500/50 shadow-xl shadow-cyan-950/20'
-        }`}
-      >
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-          <div className="flex items-start gap-3.5">
-            <div
-              className={`p-2.5 rounded-xl border flex-shrink-0 ${
-                hasSubmittedToday
-                  ? 'bg-emerald-950 border-emerald-700/60 text-emerald-400'
-                  : 'bg-cyan-900/80 border-cyan-500 text-cyan-300'
-              }`}
-            >
-              {hasSubmittedToday ? (
-                <CheckCircle2 className="w-5 h-5 text-emerald-400" />
-              ) : (
-                <Bell className="w-5 h-5 text-cyan-300" />
-              )}
-            </div>
-
-            <div>
-              <div className="flex flex-wrap items-center gap-2">
-                <h2 className="text-sm sm:text-base font-bold text-slate-100">
-                  {hasSubmittedToday
-                    ? "Today's Medical Self-Check Completed"
-                    : 'Daily Medical Check Notification: Please fill out this form'}
-                </h2>
-                <span
-                  className={`text-[10px] font-mono px-2 py-0.5 rounded font-bold ${
-                    hasSubmittedToday
-                      ? 'bg-emerald-950 text-emerald-400 border border-emerald-800'
-                      : 'bg-cyan-900 text-cyan-200 border border-cyan-600'
-                  }`}
-                >
-                  {hasSubmittedToday ? 'LOGGED TODAY' : 'ACTION REQUIRED'}
-                </span>
-              </div>
-
-              <p className="text-xs text-slate-300 mt-1 max-w-2xl leading-relaxed">
-                {hasSubmittedToday
-                  ? `Logged today: Sleep ${latestCheckin?.sleepQuality}/10, Mood: ${latestCheckin?.mentalHealth}. NASA-STD-3001 offline onboard guidance is active.`
-                  : 'In space there are no doctors on board. NASA flight surgeons are down on Earth with a 14+ minute communication delay. Check in on your sleep, mental health, pain, and habits so HelioMed can guide you offline.'}
-              </p>
-            </div>
+    <div
+      className={`rounded-2xl p-4 sm:p-5 border-2 transition-all ${
+        hasSubmittedToday
+          ? 'bg-gradient-to-r from-emerald-950/75 via-slate-900 to-cyan-950/60 border-emerald-500/70 shadow-[0_0_24px_rgba(16,185,129,0.16)]'
+          : 'bg-gradient-to-r from-cyan-950/85 via-slate-900 to-indigo-950/80 border-cyan-400/80 shadow-[0_0_26px_rgba(6,182,212,0.22)]'
+      }`}
+    >
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+        <div className="flex items-start gap-3.5">
+          <div
+            className={`p-3 rounded-xl border shrink-0 ${
+              hasSubmittedToday
+                ? 'bg-emerald-500 text-slate-950 border-emerald-300 shadow-[0_0_14px_rgba(16,185,129,0.5)]'
+                : 'bg-cyan-400 text-slate-950 border-cyan-200 shadow-[0_0_14px_rgba(34,211,238,0.55)]'
+            }`}
+          >
+            <ClipboardCheck className="w-6 h-6" />
           </div>
 
-          <div className="flex items-center gap-2 sm:self-center">
-            <button
-              type="button"
-              onClick={onOpenCheckin}
-              className={`px-5 py-2.5 rounded-xl font-bold font-mono text-xs flex items-center gap-2 transition-all cursor-pointer shadow-lg whitespace-nowrap shrink-0 ${
-                hasSubmittedToday
-                  ? 'bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700'
-                  : 'bg-gradient-to-r from-cyan-500 to-indigo-600 hover:from-cyan-400 hover:to-indigo-500 text-slate-950 font-black shadow-cyan-900'
-              }`}
-            >
-              <ShieldCheck className="w-4 h-4" />
-              <span>{hasSubmittedToday ? 'Review / Update Self-Check' : 'Fill Out Form Now'}</span>
-              <ArrowRight className="w-3.5 h-3.5" />
-            </button>
+          <div className="space-y-1">
+            <div className="flex flex-wrap items-center gap-2.5">
+              <h2 className="text-base sm:text-lg font-extrabold text-white">
+                Daily Health Check-In (Sleep, Mood &amp; Pain)
+              </h2>
+              <span
+                className={`inline-flex items-center gap-1.5 text-xs font-bold px-2.5 py-0.5 rounded-full ${
+                  hasSubmittedToday
+                    ? 'bg-emerald-400 text-slate-950 shadow-[0_0_10px_rgba(52,211,153,0.5)]'
+                    : 'bg-amber-400 text-slate-950 shadow-[0_0_10px_rgba(251,191,36,0.6)]'
+                }`}
+              >
+                <span
+                  className={`w-2 h-2 rounded-full ${
+                    hasSubmittedToday ? 'bg-slate-950' : 'bg-rose-600'
+                  }`}
+                />
+                <span>{hasSubmittedToday ? 'Check-In Saved' : 'Check-In Ready'}</span>
+              </span>
+            </div>
+
+            <p className="text-xs sm:text-sm text-slate-200 max-w-2xl leading-relaxed">
+              {hasSubmittedToday && latestCheckin ? (
+                <>
+                  Latest entry: <strong className="text-emerald-300">Sleep {latestCheckin.sleepQuality}/10 ({latestCheckin.sleepHours}h)</strong> ·{' '}
+                  <strong className="text-amber-300">{moodShort}</strong> ·{' '}
+                  <strong className={latestCheckin.hasPain ? 'text-rose-300' : 'text-cyan-300'}>
+                    {latestCheckin.hasPain
+                      ? `Pain: ${latestCheckin.painAreas.join(', ') || 'Reported'}`
+                      : 'No Pain'}
+                  </strong>
+                </>
+              ) : (
+                'Tell HelioMed how you slept, how your mind feels, and if anything hurts to get instant, easy-to-follow steps for today.'
+              )}
+            </p>
           </div>
         </div>
-      </div>
 
-      {/* Scheduled Mission Measurement Reminder Strip */}
-      {dueRoutine && (
-        <div className="rounded-xl px-4 py-3 bg-amber-950/30 border border-amber-700/50 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-          <div className="flex items-start gap-2.5">
-            <Clock className="w-4 h-4 text-amber-300 mt-0.5 flex-shrink-0" />
-            <div className="space-y-0.5">
-              <div className="flex flex-wrap items-center gap-2 text-xs">
-                <span className="font-mono font-bold text-amber-300 uppercase">
-                  Scheduled Crew Check Reminder:
-                </span>
-                <span className="font-bold text-slate-100">{dueRoutine.title}</span>
-                <span className="text-[11px] font-mono text-amber-200/80">
-                  ({dueRoutine.cadence})
-                </span>
-              </div>
-              <p className="text-[11px] text-slate-300 flex items-start gap-1.5">
-                <HelpCircle className="w-3.5 h-3.5 text-cyan-400 mt-0.5 flex-shrink-0" />
-                <span>
-                  <strong className="text-cyan-300">Why it matters:</strong> {dueRoutine.plainLanguageWhy}
-                </span>
-              </p>
-            </div>
-          </div>
-
-          {onStartDueRoutine && (
+        <div className="flex flex-wrap items-center gap-2.5 shrink-0">
+          {onGoToCheckinTab && (
             <button
               type="button"
-              onClick={() => onStartDueRoutine(dueRoutine)}
-              className="px-3.5 py-2 rounded-lg bg-amber-500 hover:bg-amber-400 text-slate-950 font-mono text-xs font-bold flex items-center gap-1.5 cursor-pointer whitespace-nowrap shrink-0 self-start sm:self-center"
+              onClick={onGoToCheckinTab}
+              className="px-4 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 border border-cyan-400/60 text-cyan-200 font-bold text-xs flex items-center gap-2 transition-all cursor-pointer whitespace-nowrap"
             >
-              <span>Start Guided Check</span>
-              <ArrowRight className="w-3.5 h-3.5" />
+              <Eye className="w-4 h-4 text-cyan-300" />
+              <span>View Plan &amp; Form</span>
             </button>
           )}
+
+          <button
+            type="button"
+            onClick={onOpenCheckin}
+            className="px-5 py-2.5 rounded-xl bg-gradient-to-r from-cyan-400 to-emerald-400 hover:from-cyan-300 hover:to-emerald-300 text-slate-950 font-extrabold text-xs sm:text-sm flex items-center gap-2 transition-all cursor-pointer shadow-[0_0_20px_rgba(34,211,238,0.45)] whitespace-nowrap"
+          >
+            <Sparkles className="w-4 h-4" />
+            <span>{hasSubmittedToday ? 'Update Daily Check-In' : 'Start Daily Check-In'}</span>
+            <ArrowRight className="w-4 h-4" />
+          </button>
         </div>
-      )}
+      </div>
     </div>
   );
 };
